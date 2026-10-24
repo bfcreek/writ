@@ -1,0 +1,8 @@
+{
+  "servers": [
+    {
+      "alias": "payments",
+      "command": "pwsh -NoProfile -NonInteractive -File ../../tools/mcp-test-server.ps1"
+    }
+  ]
+}

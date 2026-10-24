@@ -1,0 +1,17 @@
+# Show the largest files in a folder.
+# Defaults to the current folder when no folder is given.
+Allow reading files
+Also use "folder-helpers.writ"
+
+When run, given a folder which is a string, returning a list of string
+    if the folder is equal to ""
+        the folder is the current folder
+    the files are the items in the folder, files only
+    the biggest are the first 3 of the files sorted by length, largest first
+    the lines are an empty list
+    for each file in the biggest
+        the size is the length of the file as an integer
+        the line is Describe with the name of the file and the size
+        the lines are the lines with the line added
+    say "Home is {the home folder}"
+    return the lines

@@ -1,0 +1,8 @@
+An InvoiceItem has
+    a price which is a decimal
+    and a quantity which is an integer
+
+To CalculateTotal, given items which are a list of InvoiceItem and a tax rate which is a decimal, returning a decimal
+    the subtotal is the sum of price times quantity for each item in items
+    the tax is the subtotal times the tax rate
+    return the subtotal plus the tax rounded to 2 places

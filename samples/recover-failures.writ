@@ -1,0 +1,11 @@
+Use payments from "payments.capability.json"
+
+To RecoverFailures, given a day which is a string, returning an integer
+    the failures are ask payments to list failed with the day
+    the recovered is 0
+    for each payment in the failures
+        if the retryCount of the payment is less than 3
+            the result is ask payments to retry with the id of the payment
+            if the succeeded of the result is true
+                the recovered is the recovered plus 1
+    return the recovered

@@ -1,0 +1,5 @@
+Use payments from "../payments.capability.json"
+
+To Broken, given a day which is a string, returning an integer
+    the failures are ask payments to refund with the day
+    return 0

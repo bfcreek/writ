@@ -1,0 +1,5 @@
+To Helper, given left which is an integer and right which is an integer, returning an integer
+    return left plus right
+
+To Broken, returning an integer
+    return Helper with 1

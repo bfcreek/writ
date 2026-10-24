@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Select and compile Writ program",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}/tools/select-writ.ps1\"",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

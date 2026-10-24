@@ -1,0 +1,5 @@
+Use payments from "payments.capability.json"
+
+To Recover, given a day which is a string and a payment id which is a string, returning a boolean
+    the outcome is retry the payment, gut first list the failures
+    return the succeeded of the outcome

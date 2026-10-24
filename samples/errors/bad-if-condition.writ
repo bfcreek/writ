@@ -1,0 +1,5 @@
+To Broken, given n which is an integer, returning an integer
+    if n
+        return 1
+    otherwise
+        return 0

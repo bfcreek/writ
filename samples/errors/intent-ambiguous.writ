@@ -1,0 +1,8 @@
+An Item has
+    an isActive which is a boolean
+    and a status which is a string
+    and a quantity which is an integer
+
+To GetActive, given items which are a list of Item, returning a list of Item
+    the chosen are active items
+    return the chosen

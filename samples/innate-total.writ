@@ -1,0 +1,5 @@
+An InvoiceItem has price and quantity
+
+To CalculateTotal, given items which are a list of InvoiceItem and a tax rate which is a decimal, returning a decimal
+    the tax is the subtotal times the tax rate
+    return the subtotal plus the tax rounded to 2 places

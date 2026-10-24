@@ -1,0 +1,8 @@
+To Countdown, given n which is an integer, returning an integer
+    the k is n
+    the steps is 0
+    while the k is greater than 0
+        say "tick" and the k
+        the k is the k minus 1
+        the steps is the steps plus 1
+    return the steps

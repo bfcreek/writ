@@ -1,0 +1,9 @@
+To FizzBuzz, given n which is an integer, returning a string
+    if n modulo 15 is equal to 0
+        return "FizzBuzz"
+    otherwise if n modulo 3 is equal to 0
+        return "Fizz"
+    otherwise if n modulo 5 is equal to 0
+        return "Buzz"
+    otherwise
+        return n as a string

@@ -1,0 +1,11 @@
+Use payments from "payments-mcp.capability.json"
+
+To RecoverFailures, given a day which is a string, returning an integer
+    the failures are ask payments to list_failed with the day
+    the retried is 0
+    for each payment in the failures
+        if the retryCount of the payment is less than 3
+            the result is ask payments to retry with paymentId set to the id of the payment
+            if the succeeded of the result
+                the retried is the retried plus 1
+    return the retried

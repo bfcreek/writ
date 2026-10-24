@@ -1,0 +1,10 @@
+Allow reading files
+
+To Report, given a folder which is a string, returning a list of string
+    the files are the items in the folder, files only
+    the real are the files where the length is greater than 0
+    the biggest are the real sorted by length, largest first
+    the top are the first 3 of the biggest
+    for each file in the top
+        say the name of the file and the length of the file
+    return the names of the top

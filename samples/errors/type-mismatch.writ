@@ -1,0 +1,5 @@
+To Broken, given a flag which is a boolean, returning an integer
+    if the flag is true
+        return 1
+    otherwise
+        return "nope"

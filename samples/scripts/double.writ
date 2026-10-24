@@ -1,0 +1,2 @@
+When run, given a value which is an integer, returning an integer
+    return the value times 2

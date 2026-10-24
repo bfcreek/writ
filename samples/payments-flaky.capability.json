@@ -1,0 +1,45 @@
+{
+  "versionHash": "sha256:payments-flaky",
+  "grantedEffects": ["external-read", "external-write"],
+  "allowedOperations": ["list_failed", "retry"],
+  "types": [
+    {
+      "name": "FailedPayment",
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "retryCount", "type": "integer" }
+      ]
+    },
+    {
+      "name": "RetryResult",
+      "fields": [
+        { "name": "succeeded", "type": "boolean" },
+        { "name": "errorMessage", "type": "string" }
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "name": "list_failed",
+      "arguments": [{ "name": "day", "type": "string", "required": true }],
+      "resultType": "list of FailedPayment",
+      "effects": ["external-read"]
+    },
+    {
+      "name": "retry",
+      "arguments": [{ "name": "paymentId", "type": "string", "required": true }],
+      "resultType": "RetryResult",
+      "effects": ["external-write"]
+    }
+  ],
+  "mock": {
+    "list_failed": {
+      "result": [
+        { "id": "p1", "retryCount": 1 }
+      ]
+    },
+    "retry": {
+      "failure": "Gateway timeout"
+    }
+  }
+}

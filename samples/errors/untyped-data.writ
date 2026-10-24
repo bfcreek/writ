@@ -1,0 +1,8 @@
+Allow reading files
+
+An Invoice has a number which is a string and an amount which is a decimal
+
+To Total, given a path which is a string, returning a decimal
+    the text is the contents of the file at the path
+    the data is the text as JSON
+    return the sum of the amounts of the data

@@ -1,0 +1,7 @@
+# Call a Writ script and a PowerShell script, then join what they return.
+Allow running scripts
+
+When run, given a name which is a string and a value which is an integer, returning a string
+    the greeting is run "greet.ps1" with name set to the name
+    the doubled is run "double.writ" with value set to the value
+    return "{the greeting} ({the doubled})"

@@ -1,0 +1,3 @@
+To Clean, given a folder which is a string, returning an integer
+    remove the folder
+    return 0

@@ -1,0 +1,16 @@
+Allow network access and changing external systems
+
+A FailedPayment has an id which is a string and a retryCount which is an integer
+A RetryResult has a succeeded which is a boolean and an errorMessage which is a string
+
+To RecoverFailures, given a day which is a string, returning an integer
+    the response is ask payments to list_failed with the day
+    the failures are the response as a list of FailedPayment
+    the retried is 0
+    for each payment in the failures
+        if the retryCount of the payment is less than 3
+            the outcome is ask payments to retry with paymentId set to the id of the payment
+            the result is the outcome as a RetryResult
+            if the succeeded of the result
+                the retried is the retried plus 1
+    return the retried

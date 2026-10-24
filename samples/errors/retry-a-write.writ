@@ -1,0 +1,5 @@
+Use payments from "../payments.capability.json"
+
+To RetryOne, given a id which is a string, returning a boolean
+    the result is ask payments to retry with paymentId set to the id, retrying up to 3 times
+    return the succeeded of the result

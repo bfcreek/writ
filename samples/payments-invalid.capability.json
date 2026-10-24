@@ -1,0 +1,13 @@
+{
+  "versionHash": "sha256:payments-invalid",
+  "grantedEffects": ["external-read"],
+  "types": [],
+  "operations": [
+    {
+      "name": "list_failed",
+      "arguments": [{ "name": "day", "type": "string", "required": true }],
+      "resultType": "NoSuchType",
+      "effects": ["external-read"]
+    }
+  ]
+}

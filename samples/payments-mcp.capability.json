@@ -1,0 +1,36 @@
+{
+  "versionHash": "sha256:payments-mcp-demo",
+  "provider": { "kind": "mcp", "command": "pwsh -NoProfile -NonInteractive -File ../tools/mcp-test-server.ps1" },
+  "grantedEffects": ["external-read", "external-write"],
+  "allowedOperations": ["list_failed", "retry"],
+  "types": [
+    {
+      "name": "FailedPayment",
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "retryCount", "type": "integer" }
+      ]
+    },
+    {
+      "name": "RetryResult",
+      "fields": [
+        { "name": "succeeded", "type": "boolean" },
+        { "name": "errorMessage", "type": "string" }
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "name": "list_failed",
+      "arguments": [{ "name": "day", "type": "string", "required": true }],
+      "resultType": "list of FailedPayment",
+      "effects": ["external-read"]
+    },
+    {
+      "name": "retry",
+      "arguments": [{ "name": "paymentId", "type": "string", "required": true }],
+      "resultType": "RetryResult",
+      "effects": ["external-write"]
+    }
+  ]
+}

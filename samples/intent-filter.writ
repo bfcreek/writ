@@ -1,0 +1,7 @@
+An InvoiceItem has
+    a price which is a decimal
+    and a quantity which is an integer
+
+To PositiveQuantity, given items which are a list of InvoiceItem, returning a list of InvoiceItem
+    the keep is the items where the quantity is greater than 0
+    return the keep

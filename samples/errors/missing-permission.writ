@@ -1,0 +1,5 @@
+Use payments from "../payments-readonly.capability.json"
+
+To Broken, given a paymentId which is a string, returning a boolean
+    the result is ask payments to retry with the paymentId
+    return the succeeded of the result

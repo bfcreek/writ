@@ -1,0 +1,159 @@
+{
+  "version": "pwsh-7-pinned-1",
+  "cmdlets": [
+    {
+      "name": "Get-ChildItem",
+      "phrases": ["items in", "files in", "children of", "contents of", "list the files", "list the items", "entries in"],
+      "effect": "filesystem-read",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["folder", "path", "directory", "location", "root"] },
+        { "name": "Recurse", "type": "switch", "aliases": ["recursively", "and below", "and subfolders"] },
+        { "name": "File", "type": "switch", "aliases": ["files only", "only files", "just files"] },
+        { "name": "Directory", "type": "switch", "aliases": ["folders only", "only folders", "just folders"] },
+        { "name": "Filter", "type": "string", "aliases": ["pattern", "filter", "matching"] }
+      ]
+    },
+    {
+      "name": "Get-Item",
+      "phrases": ["the item at", "item details for"],
+      "effect": "filesystem-read",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "folder"] }
+      ]
+    },
+    {
+      "name": "Get-Content",
+      "phrases": ["contents of the file", "text of the file", "read the file", "lines of the file", "read the text"],
+      "effect": "filesystem-read",
+      "output": "string",
+      "fixed": { "Raw": true },
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "filename", "file name"] }
+      ]
+    },
+    {
+      "name": "Set-Content",
+      "phrases": ["write the text to", "save the text to", "write to the file", "overwrite the file"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "filename", "destination"] },
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "content", "contents", "value"] }
+      ]
+    },
+    {
+      "name": "New-Item",
+      "phrases": ["create the folder", "create a folder", "make the folder", "create the file", "create a file"],
+      "effect": "filesystem-write",
+      "output": "dynamic",
+      "fixed": { "Force": true },
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "folder", "file", "name"] },
+        { "name": "ItemType", "type": "string", "aliases": ["kind", "type"] }
+      ]
+    },
+    {
+      "name": "Copy-Item",
+      "phrases": ["copy the file", "copy the folder", "copy the item"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["source", "path", "file", "from"] },
+        { "name": "Destination", "type": "string", "required": true, "aliases": ["destination", "target", "to"] }
+      ]
+    },
+    {
+      "name": "Remove-Item",
+      "phrases": ["remove the", "delete the", "remove the folder", "delete the folder", "delete the file", "remove the file"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "folder", "file", "item"] },
+        { "name": "Recurse", "type": "switch", "aliases": ["recursively", "and everything in it"] }
+      ]
+    },
+    {
+      "name": "Test-Path",
+      "phrases": ["whether the path exists", "the path exists", "the file exists", "the folder exists", "exists"],
+      "effect": "filesystem-read",
+      "output": "boolean",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "folder"] }
+      ]
+    },
+    {
+      "name": "Get-Process",
+      "phrases": ["running processes", "the processes", "list the processes"],
+      "effect": "external-read",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "Name", "type": "string", "aliases": ["name", "process name", "named"] }
+      ]
+    },
+    {
+      "name": "Stop-Process",
+      "phrases": ["stop the process", "kill the process", "end the process"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Name", "type": "string", "required": true, "aliases": ["name", "process", "process name"] }
+      ]
+    },
+    {
+      "name": "Get-Service",
+      "phrases": ["the services", "list the services", "installed services"],
+      "effect": "external-read",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "Name", "type": "string", "aliases": ["name", "service", "service name"] }
+      ]
+    },
+    {
+      "name": "Get-Date",
+      "phrases": ["the current date", "the current time", "now", "today"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": []
+    },
+    {
+      "name": "Invoke-RestMethod",
+      "phrases": ["fetch json from", "call the api at", "get json from", "request json from", "the response from"],
+      "effect": "network-read",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Uri", "type": "string", "required": true, "aliases": ["url", "uri", "address", "endpoint"] }
+      ]
+    },
+    {
+      "name": "Invoke-WebRequest",
+      "phrases": ["download", "fetch the page at", "the page at"],
+      "effect": "network-read",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Uri", "type": "string", "required": true, "aliases": ["url", "uri", "address"] }
+      ]
+    },
+    {
+      "name": "Import-Csv",
+      "phrases": ["rows of the csv", "read the csv", "the csv at", "import the csv"],
+      "effect": "filesystem-read",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "csv"] }
+      ]
+    },
+    {
+      "name": "Export-Csv",
+      "phrases": ["save as csv", "write the csv", "export to csv"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "fixed": { "NoTypeInformation": true },
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["rows", "items", "records", "data"] },
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "destination"] }
+      ]
+    }
+  ]
+}

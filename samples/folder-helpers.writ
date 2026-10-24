@@ -1,0 +1,4 @@
+# Shared helpers for folder scripts.
+
+To Describe, given a name which is a string and a size which is an integer, returning a string
+    return "{the name} ({the size} bytes)"

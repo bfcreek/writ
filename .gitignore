@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+**/out/
+*.user
+*.suo
+.vs/
+samples/out/

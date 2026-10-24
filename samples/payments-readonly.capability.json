@@ -1,0 +1,22 @@
+{
+  "versionHash": "sha256:payments-readonly",
+  "grantedEffects": ["external-read"],
+  "allowedOperations": ["list_failed", "retry"],
+  "types": [
+    {
+      "name": "RetryResult",
+      "fields": [
+        { "name": "succeeded", "type": "boolean" },
+        { "name": "errorMessage", "type": "string" }
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "name": "retry",
+      "arguments": [{ "name": "paymentId", "type": "string", "required": true }],
+      "resultType": "RetryResult",
+      "effects": ["external-write"]
+    }
+  ]
+}

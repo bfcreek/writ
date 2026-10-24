@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Writ.Runtime\Writ.Runtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\Writ.Runtime.PowerShell\Writ.psm1" LogicalName="Writ.psm1" />
+    <EmbeddedResource Include="..\..\tools\powershell.catalog.json" LogicalName="powershell.catalog.json" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

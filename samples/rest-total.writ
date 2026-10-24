@@ -1,0 +1,10 @@
+Allow network access
+
+A Todo has an id which is an integer, a title which is a string, and a completed which is a boolean
+
+To CountDone, given a url which is a string, returning an integer
+    the response is fetch JSON from the url
+    the todos are the response as a list of Todo
+    the done are the todos where the completed is equal to true
+    say "{the count of the done} of {the count of the todos} are done"
+    return the count of the done

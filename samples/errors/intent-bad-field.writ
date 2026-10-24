@@ -1,0 +1,6 @@
+An Item has
+    a quantity which is an integer
+
+To Broken, given items which are a list of Item, returning a decimal
+    the total is the sum of price times quantity for each item in items
+    return the total

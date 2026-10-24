@@ -1,0 +1,16 @@
+Use payments from "payments.capability.json"
+
+To RecoverCarefully, given a day which is a string, returning a string
+    the failures are ask payments to list_failed with the day, retrying up to 3 times
+    the outcome is "nothing to do"
+    for each payment in the failures
+        try to
+            the result is ask payments to retry with paymentId set to the id of the payment
+            if the succeeded of the result
+                the outcome is "retried"
+        if that fails
+            say "Could not retry {the id of the payment}: {the error}"
+            the outcome is "failed"
+        finally
+            say "Looked at {the id of the payment}"
+    return the outcome

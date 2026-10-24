@@ -1,0 +1,6 @@
+{
+  // Programs in this folder become an in-process C# library.
+  // A program that calls a PowerShell cmdlet still emits a script, because the library cannot run cmdlets.
+  "prefer": ["in-process", "compiled"],
+  "avoid": ["external-process"]
+}
