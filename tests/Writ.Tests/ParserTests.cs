@@ -50,4 +50,52 @@ public class ParserTests
         var ret = Assert.IsType<ReturnStmtAst>(Assert.Single(fn.Body));
         Assert.IsType<OfExprAst>(ret.Value);
     }
+
+    [Fact]
+    public void A_file_with_no_trailing_newline_parses()
+    {
+        var source = "when run, display \"hello, world!\"";
+        var diagnostics = new DiagnosticBag();
+        var tokens = new Lexer(source, "hello.writ", diagnostics).Tokenize();
+        var ast = new Parser(tokens, "hello.writ", diagnostics).ParseProgram();
+
+        Assert.False(diagnostics.HasErrors, string.Join(Environment.NewLine, diagnostics.Items));
+        var entry = Assert.IsType<FunctionAst>(Assert.Single(ast.Declarations));
+        Assert.True(entry.IsEntry);
+        var say = Assert.IsType<SayStmtAst>(Assert.Single(entry.Body));
+        var text = Assert.IsType<LiteralExprAst>(Assert.Single(say.Parts));
+        Assert.Equal("hello, world!", text.Value);
+    }
+
+    [Fact]
+    public void Sentences_in_the_file_are_the_script()
+    {
+        var source = """
+            say "hello"
+            say "there"
+            """;
+        var diagnostics = new DiagnosticBag();
+        var ast = new Parser(new Lexer(source, "hello.writ", diagnostics).Tokenize(), "hello.writ", diagnostics).ParseProgram();
+
+        Assert.False(diagnostics.HasErrors, string.Join(Environment.NewLine, diagnostics.Items));
+        var entry = Assert.IsType<FunctionAst>(Assert.Single(ast.Declarations));
+        Assert.True(entry.IsEntry);
+        Assert.Empty(entry.Parameters);
+        Assert.Equal(2, entry.Body.Count);
+    }
+
+    [Fact]
+    public void A_sentence_and_a_When_run_block_cannot_both_be_the_script()
+    {
+        var source = """
+            say "hello"
+
+            When run
+                say "there"
+            """;
+        var diagnostics = new DiagnosticBag();
+        new Parser(new Lexer(source, "hello.writ", diagnostics).Tokenize(), "hello.writ", diagnostics).ParseProgram();
+
+        Assert.Contains(diagnostics.Items, diagnostic => diagnostic.Code == "E1109");
+    }
 }

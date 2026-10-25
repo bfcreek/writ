@@ -7,6 +7,13 @@
       "request": "launch",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}/tools/select-writ.ps1\"",
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Select and compile Writ program (debug)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}/tools/select-writ.ps1\" -Debug",
+      "cwd": "${workspaceFolder}"
     }
   ]
 }

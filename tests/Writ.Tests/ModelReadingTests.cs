@@ -19,8 +19,8 @@ public class ModelReadingTests
         Assert.Equal("integer", Assert.IsType<IrPrimitiveType>(record.Fields[1].Type).Name);
         Assert.Contains(result.Ir.Functions[0].Body, node => node is IrAssign { Value: IrBinary { Left: IrSumProjection } });
 
-        var exec = new RoslynExecutor().Execute(
-            result.GeneratedCSharp!,
+        var exec = new PowerShellExecutor().Execute(
+            result.GeneratedPowerShell!,
             "innate-total",
             "CalculateTotal",
             File.ReadAllText(SamplePath("input-calculate-total.json")));
@@ -61,7 +61,7 @@ public class ModelReadingTests
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.DoesNotContain(model.Texts, text => text.Equals("subtotal", StringComparison.OrdinalIgnoreCase));
 
-        var exec = new RoslynExecutor().Execute(result.GeneratedCSharp!, "test", "Fixed", """{"items":[]}""");
+        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "test", "Fixed", """{"items":[]}""");
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(4m, Assert.IsType<decimal>(exec.Value));
     }
@@ -96,6 +96,89 @@ public class ModelReadingTests
 
         Assert.False(result.Success);
         Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "E2105" && diagnostic.Message.Contains("currency"));
+    }
+
+    [Fact]
+    public void Debug_trace_is_reached_for_a_file_with_no_trailing_newline()
+    {
+        var writer = new StringWriter();
+        var result = new CompilationPipeline().Compile(
+            "When run\n    list the files here",
+            Path.Combine(Path.GetTempPath(), "hello-no-newline.writ"),
+            model: new ModelOptions { Debug = writer });
+
+        var trace = writer.ToString();
+        Assert.Contains("debug: model read", trace);
+        Assert.Contains("list the files here", trace);
+        Assert.False(result.Success);
+    }
+
+    [Fact]
+    public void Debug_trace_records_one_type_reading_and_a_rule_that_skipped_the_model()
+    {
+        var writer = new StringWriter();
+        var result = new CompilationPipeline().Compile("""
+            An InvoiceItem has price and quantity
+
+            To Total, given items which are a list of InvoiceItem, returning a decimal
+                return the sum of price times quantity for each item in items
+            """, Path.Combine(Path.GetTempPath(), "debug-trace.writ"), model: new ModelOptions { Debug = writer });
+
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        var trace = writer.ToString();
+        Assert.Equal(1, CountOf(trace, "debug: model read"));
+        Assert.Contains("text: InvoiceItem has price and quantity", trace);
+        Assert.Contains("decimal", trace);
+        Assert.Contains("integer", trace);
+        Assert.Contains("accepted", trace);
+        Assert.Contains("debug: rule", trace);
+        Assert.Contains("rule match: Sum of price * quantity over items.", trace);
+        Assert.DoesNotContain("chat:", trace);
+    }
+
+    [Fact]
+    public void Debug_trace_does_not_send_competing_rules_to_the_model()
+    {
+        var writer = new StringWriter();
+        var path = SamplePath(Path.Combine("errors", "intent-ambiguous.writ"));
+        var result = new CompilationPipeline().Compile(File.ReadAllText(path), path, model: new ModelOptions { Debug = writer });
+
+        Assert.False(result.Success);
+        var trace = writer.ToString();
+        Assert.Contains("2 rule matches; not sent to the model", trace);
+        Assert.DoesNotContain("debug: model read", trace);
+    }
+
+    [Fact]
+    public void Debug_trace_marks_a_catalog_miss_as_rejected()
+    {
+        var writer = new StringWriter();
+        var model = new ScriptedModel(_ => ModelReading.Of(
+            new ModelSelection("currency", "price", new Dictionary<string, string>(), "Money is a currency.")));
+        var result = new CompilationPipeline(model: model).Compile("""
+            An InvoiceItem has price
+
+            To Show, returning an integer
+                return 1
+            """, "test.writ", model: new ModelOptions { Debug = writer });
+
+        Assert.False(result.Success);
+        var trace = writer.ToString();
+        Assert.Contains("0: currency (price) — Money is a currency.", trace);
+        Assert.Contains("rejected", trace);
+    }
+
+    private static int CountOf(string text, string value)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 
     [Fact]
@@ -142,10 +225,10 @@ public class ModelReadingTests
         Assert.Equal("list_failed", Assert.IsType<IrCapabilityCall>(sequence.Steps[0]).Operation);
         Assert.Equal("retry", Assert.IsType<IrCapabilityCall>(sequence.Steps[1]).Operation);
 
-        var source = result.GeneratedCSharp!;
-        Assert.True(source.IndexOf("\"list_failed\"", StringComparison.Ordinal) < source.IndexOf("\"retry\"", StringComparison.Ordinal));
+        var source = result.GeneratedPowerShell!;
+        Assert.True(source.IndexOf("'list_failed'", StringComparison.Ordinal) < source.IndexOf("'retry'", StringComparison.Ordinal));
 
-        var exec = new RoslynExecutor().Execute(
+        var exec = new PowerShellExecutor().Execute(
             source,
             "but-first",
             "Recover",

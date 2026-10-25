@@ -1,5 +1,5 @@
 {
-  "version": "pwsh-7-pinned-1",
+  "version": "pwsh-7-pinned-2",
   "cmdlets": [
     {
       "name": "Get-ChildItem",
@@ -153,6 +153,137 @@
       "parameters": [
         { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["rows", "items", "records", "data"] },
         { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "destination"] }
+      ]
+    },
+    {
+      "name": "Add-Content",
+      "phrases": ["add the line to", "add the text to", "append the line to"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "filename", "destination"] },
+        { "name": "Value", "type": "string", "required": true, "aliases": ["line", "text", "content", "contents", "value"] }
+      ]
+    },
+    {
+      "name": "Move-Item",
+      "phrases": ["move the file to", "move the folder to", "move the item to"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["source", "path", "file", "from"] },
+        { "name": "Destination", "type": "string", "required": true, "aliases": ["destination", "target", "to"] }
+      ]
+    },
+    {
+      "name": "Rename-Item",
+      "phrases": ["rename the file to", "rename the folder to", "rename the item to", "rename the"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "folder", "item", "source", "destination"] },
+        { "name": "NewName", "type": "string", "required": true, "aliases": ["newname", "renamed", "new name", "name"] }
+      ]
+    },
+    {
+      "name": "Join-Path",
+      "phrases": ["the combined path of", "join the path of"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["folder", "directory", "parent", "path"] },
+        { "name": "ChildPath", "type": "string", "required": true, "aliases": ["name", "child", "filename", "file"] }
+      ]
+    },
+    {
+      "name": "Split-Path",
+      "phrases": ["the parent folder of", "the file name of", "the leaf of"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "folder"] },
+        { "name": "Parent", "type": "switch", "aliases": ["parent folder of"] },
+        { "name": "Leaf", "type": "switch", "aliases": ["file name of", "the leaf of"] }
+      ]
+    },
+    {
+      "name": "Resolve-Path",
+      "phrases": ["the full path of", "resolve the path"],
+      "effect": "filesystem-read",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "folder"] }
+      ]
+    },
+    {
+      "name": "Set-Location",
+      "phrases": ["change to the folder", "set the location to", "go to the folder"],
+      "effect": "pure",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["folder", "path", "directory", "location"] }
+      ]
+    },
+    {
+      "name": "Start-Process",
+      "phrases": ["start the program", "launch the program"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": [
+        { "name": "FilePath", "type": "string", "required": true, "aliases": ["program", "executable", "command"] },
+        { "name": "ArgumentList", "type": "string", "aliases": ["arguments", "args"] }
+      ]
+    },
+    {
+      "name": "Start-Service",
+      "phrases": ["start the service"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Name", "type": "string", "required": true, "aliases": ["service", "name", "servicename"] }
+      ]
+    },
+    {
+      "name": "Stop-Service",
+      "phrases": ["stop the service"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Name", "type": "string", "required": true, "aliases": ["service", "name", "servicename"] }
+      ]
+    },
+    {
+      "name": "Restart-Service",
+      "phrases": ["restart the service"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Name", "type": "string", "required": true, "aliases": ["service", "name", "servicename"] }
+      ]
+    },
+    {
+      "name": "Clear-Host",
+      "phrases": ["clear the console"],
+      "effect": "pure",
+      "output": "void",
+      "parameters": []
+    },
+    {
+      "name": "Start-Sleep",
+      "phrases": ["pause for", "sleep for", "wait for"],
+      "effect": "pure",
+      "output": "void",
+      "parameters": [
+        { "name": "Seconds", "type": "integer", "required": true, "aliases": ["delay", "seconds", "second"] }
+      ]
+    },
+    {
+      "name": "Read-Host",
+      "phrases": ["prompt for"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Prompt", "type": "string", "required": true, "aliases": ["question", "prompt", "text"] }
       ]
     }
   ]

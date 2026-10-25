@@ -22,59 +22,43 @@ public class EmissionTests
     }
 
     [Fact]
-    public void Project_preferences_select_the_in_process_library()
+    public void Project_preferences_select_the_powershell_script()
     {
         var path = TestPaths.Sample(Path.Combine("emission", "total.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var emission = result.Emission!;
-        Assert.Equal("csharp", emission.Language);
-        Assert.Equal("library", emission.Approach);
-        Assert.Equal("in-process", emission.Architecture);
-        Assert.Equal(EmissionCatalog.CSharpLibrary.Id, emission.Id);
-        Assert.Contains("scored 4", emission.Reason);
-        Assert.Contains(emission.Considered, item => item.Id == "powershell-script" && item.Reason.Contains("scored -2"));
+        Assert.Equal("powershell", emission.Language);
+        Assert.Equal("script", emission.Approach);
+        Assert.Equal("external-process", emission.Architecture);
+        Assert.Equal(EmissionCatalog.PowerShellScript.Id, emission.Id);
+        Assert.Contains("prefers script", emission.Reason);
 
-        var exec = new RoslynExecutor().Execute(result.GeneratedCSharp!, "total", "Double", """{ "value": 21 }""");
+        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "total", "Double", """{ "value": 21 }""");
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
-        Assert.Equal(42L, exec.Value);
+        Assert.Equal(42L, Convert.ToInt64(exec.Value));
 
         var explained = Explainer.Explain(result, path);
-        Assert.Contains("emission: csharp-library", explained);
-        Assert.Contains("scored 4", explained);
+        Assert.Contains("emission: powershell-script", explained);
+        Assert.Contains("prefers script", explained);
     }
 
     [Fact]
-    public void A_cmdlet_keeps_the_powershell_script_when_the_library_cannot_run_it()
+    public void A_cmdlet_program_emits_a_powershell_script()
     {
-        var dir = TempDir();
-        try
-        {
-            var path = Path.Combine(dir, "report.writ");
-            File.WriteAllText(path, File.ReadAllText(TestPaths.Sample("folder-report.writ")));
-            File.WriteAllText(Path.Combine(dir, "writ.constraints.json"), """
-                { "prefer": ["in-process", "compiled"] }
-                """);
-
-            var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
-            Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-            Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
-            Assert.Contains("only emission that can compile this program", result.Emission.Reason);
-            Assert.Contains(result.Emission.Considered, item =>
-                item.Id == EmissionCatalog.CSharpLibrary.Id && item.Reason.Contains("Get-ChildItem"));
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
+        var path = TestPaths.Sample("folder-report.writ");
+        var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
+        Assert.Contains("Get-ChildItem", result.GeneratedPowerShell);
     }
 
     [Fact]
-    public void Forbidding_every_architecture_is_an_error()
+    public void Forbidding_the_script_architecture_is_an_error()
     {
-        var result = Compile(Pure, """{ "forbid": ["external-process", "in-process"] }""");
+        var result = Compile(Pure, """{ "forbid": ["external-process"] }""");
         Assert.False(result.Success);
-        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "E5001" && diagnostic.Message.Contains("powershell-script") && diagnostic.Message.Contains("csharp-library"));
+        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "E5001" && diagnostic.Message.Contains("powershell-script") && diagnostic.Message.Contains("external-process"));
     }
 
     [Fact]
@@ -113,18 +97,18 @@ public class EmissionTests
         var broken = Compile(Pure, "{ not json");
         Assert.Contains(broken.Diagnostics, diagnostic => diagnostic.Code == "E5002");
 
-        var extra = Compile(Pure, """{ "prefer": ["compiled"], "speed": "fast" }""");
+        var extra = Compile(Pure, """{ "prefer": ["script"], "speed": "fast" }""");
         Assert.Contains(extra.Diagnostics, diagnostic => diagnostic.Code == "E5002");
     }
 
     [Fact]
-    public void Project_preferences_outweigh_user_preferences()
+    public void Project_and_user_preferences_both_apply()
     {
         var dir = TempDir();
         try
         {
             var user = Path.Combine(dir, "user.json");
-            File.WriteAllText(user, """{ "prefer": ["compiled"] }""");
+            File.WriteAllText(user, """{ "avoid": ["dry-run"] }""");
             var project = Path.Combine(dir, "app");
             Directory.CreateDirectory(project);
             File.WriteAllText(Path.Combine(project, "writ.constraints.json"), """{ "prefer": ["script"] }""");
@@ -138,8 +122,10 @@ public class EmissionTests
             });
             Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
             Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
-            Assert.Contains("scored 2", result.Emission.Reason);
-            Assert.Contains(result.Emission.Considered, item => item.Id == EmissionCatalog.CSharpLibrary.Id && item.Reason.Contains("scored 1"));
+            Assert.Contains("user user.json", result.Emission.Reason);
+            Assert.Contains("project writ.constraints.json", result.Emission.Reason);
+            Assert.Contains("prefers script", result.Emission.Reason);
+            Assert.Contains("avoids dry-run", result.Emission.Reason);
         }
         finally
         {
@@ -153,21 +139,21 @@ public class EmissionTests
         var dir = TempDir();
         try
         {
-            File.WriteAllText(Path.Combine(dir, "writ.constraints.json"), """{ "prefer": ["script"] }""");
+            File.WriteAllText(Path.Combine(dir, "writ.constraints.json"), """{ "forbid": ["external-process"] }""");
             var child = Path.Combine(dir, "child");
             Directory.CreateDirectory(child);
-            File.WriteAllText(Path.Combine(child, "writ.constraints.json"), """{ "language": "csharp" }""");
+            File.WriteAllText(Path.Combine(child, "writ.constraints.json"), """{ "require": ["dry-run"] }""");
             var path = Path.Combine(child, "double.writ");
             File.WriteAllText(path, Pure);
 
             var result = new CompilationPipeline().Compile(Pure, path);
             Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-            Assert.Equal(EmissionCatalog.CSharpLibrary.Id, result.Emission!.Id);
+            Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
+            Assert.Contains("requires dry-run", result.Emission.Reason);
 
             File.Delete(Path.Combine(child, "writ.constraints.json"));
             var fromParent = new CompilationPipeline().Compile(Pure, path);
-            Assert.Equal(EmissionCatalog.PowerShellScript.Id, fromParent.Emission!.Id);
-            Assert.Contains("prefers script", fromParent.Emission.Reason);
+            Assert.Contains(fromParent.Diagnostics, diagnostic => diagnostic.Code == "E5001" && diagnostic.Message.Contains("external-process"));
         }
         finally
         {
@@ -176,34 +162,25 @@ public class EmissionTests
     }
 
     [Fact]
-    public void An_empty_constraints_file_ties_and_keeps_the_default()
+    public void An_empty_constraints_file_keeps_the_powershell_script()
     {
         var result = Compile(Pure, "{ }");
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
-        Assert.Contains("tied", result.Emission.Reason);
+        Assert.Contains("only emission that satisfies the constraints", result.Emission.Reason);
+        Assert.Contains("no preferences", result.Emission.Reason);
     }
 
     [Fact]
     public void A_forced_target_skips_scoring_and_still_has_to_fit_the_program()
     {
-        var forced = Compile(Pure, """{ "prefer": ["compiled"] }""", new EmissionOptions { ForcedId = "powershell-script" });
+        var forced = Compile(Pure, """{ "prefer": ["script"] }""", new EmissionOptions { ForcedId = "powershell-script" });
         Assert.True(forced.Success, string.Join(Environment.NewLine, forced.Diagnostics));
         Assert.Equal(EmissionCatalog.PowerShellScript.Id, forced.Emission!.Id);
         Assert.Contains("forced", forced.Emission.Reason);
 
-        var dir = TempDir();
-        try
-        {
-            var path = Path.Combine(dir, "report.writ");
-            File.WriteAllText(path, File.ReadAllText(TestPaths.Sample("folder-report.writ")));
-            var result = new CompilationPipeline().Compile(File.ReadAllText(path), path, emission: new EmissionOptions { ForcedId = "csharp-library" });
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "E5001" && diagnostic.Message.Contains("Get-ChildItem"));
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
+        var unknown = Compile(Pure, "{ }", new EmissionOptions { ForcedId = "csharp-library" });
+        Assert.Contains(unknown.Diagnostics, diagnostic => diagnostic.Code == "E5003" && diagnostic.Message.Contains("csharp-library"));
     }
 
     [Fact]
@@ -213,14 +190,22 @@ public class EmissionTests
         var source = File.ReadAllText(path);
         var pipeline = new CompilationPipeline();
         var plain = pipeline.Compile(source, path);
-        var forced = pipeline.Compile(source, path, emission: new EmissionOptions { ForcedId = "csharp-library" });
-        Assert.True(plain.Success && forced.Success);
+        Assert.True(plain.Success, string.Join(Environment.NewLine, plain.Diagnostics));
 
-        var locked = LockFile.Build(source, plain, pipeline.Cmdlets);
-        var current = LockFile.Build(source, forced, pipeline.Cmdlets);
+        var current = LockFile.Build(source, plain, pipeline.Cmdlets);
+        var locked = new WritLock
+        {
+            SourceHash = current.SourceHash,
+            CompilerVersion = current.CompilerVersion,
+            IrSchema = current.IrSchema,
+            CmdletCatalogHash = current.CmdletCatalogHash,
+            Capabilities = current.Capabilities,
+            Readings = current.Readings,
+            Emission = "csharp-library"
+        };
         Assert.Contains(LockFile.Verify(locked, current, path, frozen: true), diagnostic => diagnostic.Code == "E4009" && diagnostic.Message.Contains("emission"));
         Assert.Empty(LockFile.Verify(locked, current, path, frozen: false));
-        Assert.Contains("emission: powershell-script -> csharp-library", Explainer.Diff(locked, current));
+        Assert.Contains("emission: csharp-library -> powershell-script", Explainer.Diff(locked, current));
 
         var legacy = new WritLock
         {

@@ -2,7 +2,6 @@ using Writ.Compiler.Capabilities;
 using Writ.Compiler.Compilation;
 using Writ.Compiler.Execution;
 using Writ.Compiler.Ir;
-using Writ.Runtime;
 
 namespace Writ.Tests;
 
@@ -11,24 +10,22 @@ public class CapabilityTests
     [Fact]
     public void Mock_payment_recovery_runs_without_compiling_invocations()
     {
-        CapabilityRuntime.Reset();
         var loader = new FileCapabilityLoader();
         var path = SamplePath("recover-failures.writ");
         var result = new CompilationPipeline(capabilities: loader).Compile(File.ReadAllText(path), path);
 
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.True(loader.Discoveries > 0);
-        Assert.Equal(0, CapabilityRuntime.Calls);
         Assert.Contains(result.Ir!.Functions[0].Body, n => n is IrAssign { Value: IrCapabilityCall });
 
-        var exec = new RoslynExecutor().Execute(
-            result.GeneratedCSharp!,
+        var exec = new PowerShellExecutor().Execute(
+            result.GeneratedPowerShell!,
             "recover-failures",
             "RecoverFailures",
             File.ReadAllText(SamplePath("input-recover.json")));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
-        Assert.Equal(1L, Assert.IsType<long>(exec.Value));
-        Assert.Equal(2, CapabilityRuntime.Calls);
+        Assert.Equal(1L, Convert.ToInt64(exec.Value));
+        Assert.Equal(2, exec.CapabilityCalls);
     }
 
     [Fact]

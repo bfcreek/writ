@@ -26,6 +26,8 @@ public sealed class Parser
     {
         SkipNewLines();
         var declarations = new List<AstNode>();
+        var script = new List<StmtAst>();
+        var sawEntry = false;
         var start = Peek().Span;
 
         while (!IsAtEnd())
@@ -54,22 +56,58 @@ public sealed class Parser
             }
             else if (Check(TokenKind.When) && IsAtWord(_current + 1, "run"))
             {
-                declarations.Add(ParseEntry());
+                var entry = ParseEntry();
+                if (sawEntry || script.Count > 0)
+                {
+                    _diagnostics.Error("E1109",
+                        "The sentences in this file are already what it does when it runs. Remove the other 'When run' block.",
+                        _filePath, entry.Span);
+                }
+                else
+                {
+                    sawEntry = true;
+                    declarations.Add(entry);
+                }
             }
             else if (IsAtWord(_current, "also") && CheckNext(TokenKind.Use))
             {
                 declarations.Add(ParseInclude());
             }
-            else
+            else if (Check(TokenKind.Indent) || Check(TokenKind.Dedent))
             {
                 var bad = Advance();
                 _diagnostics.Error("E1101",
-                    $"Expected 'An ... has', 'Use ... from', 'Also use', 'Allow', 'When run', or 'To ...', found '{bad.Text}'.",
+                    $"Expected a sentence, 'An ... has', 'Use ... from', 'Also use', 'Allow', or 'To ...', found '{bad.Text}'.",
                     _filePath, bad.Span);
-                Synchronize();
+            }
+            else
+            {
+                var statement = ParseStatement();
+                if (sawEntry)
+                {
+                    _diagnostics.Error("E1109",
+                        "The sentences in this file are already what it does when it runs. Remove the other 'When run' block.",
+                        _filePath, statement.Span);
+                }
+                else
+                {
+                    script.Add(statement);
+                }
             }
 
             SkipNewLines();
+        }
+
+        if (script.Count > 0)
+        {
+            var span = script.Count == 1 ? script[0].Span : Combine(script[0].Span, script[^1].Span);
+            declarations.Add(new FunctionAst(
+                "Main",
+                [],
+                new NamedTypeAst("nothing", span),
+                script,
+                span,
+                IsEntry: true));
         }
 
         var end = Previous().Span;
@@ -215,7 +253,8 @@ public sealed class Parser
     /// <summary>
     /// When run, given a folder which is a string, returning a string
     ///     …
-    /// The script's own parameter block. "returning" is optional; without it the script returns nothing.
+    /// The script's parameters and result. Without them, the sentences in the file are the script.
+    /// A single sentence may sit on the same line: When run, say "hello".
     /// </summary>
     private FunctionAst ParseEntry()
     {
@@ -230,8 +269,17 @@ public sealed class Parser
             returnType = ParseType();
         }
 
-        Consume(TokenKind.NewLine, "Expected a newline after 'When run …'.");
-        var body = ParseBlock();
+        IReadOnlyList<StmtAst> body;
+        if (Check(TokenKind.NewLine) || IsAtEnd())
+        {
+            Consume(TokenKind.NewLine, "Expected a newline after 'When run …'.");
+            body = ParseBlock();
+        }
+        else
+        {
+            body = [ParseStatement()];
+        }
+
         var end = body.Count > 0 ? body[^1].Span : start;
         return new FunctionAst("Main", parameters, returnType, body, Combine(start, end), IsEntry: true);
     }
@@ -334,9 +382,14 @@ public sealed class Parser
             return ParseReturn();
         }
 
-        if (Check(TokenKind.Say))
+        if (Check(TokenKind.Say) || IsConsoleVerb())
         {
             return ParseSay();
+        }
+
+        if (TryParseHostStatement() is { } host)
+        {
+            return host;
         }
 
         if (Check(TokenKind.While) || Check(TokenKind.Until))
@@ -378,9 +431,741 @@ public sealed class Parser
         return false;
     }
 
+    /// <summary>"say", "display", and "print" all write a value. The other two are ordinary words everywhere else.</summary>
+    private bool IsConsoleVerb() => IsAtWord(_current, "display", "print");
+
+    /// <summary>
+    /// Sentences recognized directly. Each family takes the verb, noun, and unit variants
+    /// implemented below, and those words stay ordinary in every other position.
+    /// A sentence that does not fit exactly is left for the command catalog.
+    /// </summary>
+    private StmtAst? TryParseHostStatement()
+    {
+        var mark = _current;
+        ExprAst? expr = ParseClear()
+            ?? ParseWait()
+            ?? ParseStopWith()
+            ?? ParseHostMessage()
+            ?? ParseGo()
+            ?? (IsReadPrompt() ? ParseReadPrompt() : null)
+            ?? (IsPromptFor() ? ParsePrompt() : null)
+            ?? ParseTransfer()
+            ?? ParseRemove()
+            ?? ParseCreate()
+            ?? ParseControl()
+            ?? ParsePathStatement();
+        if (expr is null || (!Check(TokenKind.NewLine) && !IsAtEnd() && !Check(TokenKind.Dedent)))
+        {
+            _current = mark;
+            return null;
+        }
+
+        return FinishHost(expr);
+    }
+
+    private StmtAst FinishHost(ExprAst expr)
+    {
+        if (!Check(TokenKind.NewLine) && !IsAtEnd() && !Check(TokenKind.Dedent))
+        {
+            _diagnostics.Error("E1104", "Expected the end of the line.", _filePath, Peek().Span);
+            while (!IsAtEnd() && !Check(TokenKind.NewLine) && !Check(TokenKind.Dedent))
+            {
+                Advance();
+            }
+        }
+
+        Match(TokenKind.NewLine);
+        return new ExpressionStmtAst(expr, expr.Span);
+    }
+
+    private bool IsReadPrompt() =>
+        WordAt(_current, "read") && IsAt(_current + 1, TokenKind.StringLiteral);
+
+    private bool IsUserPrompt()
+    {
+        if (!Check(TokenKind.Ask))
+        {
+            return false;
+        }
+
+        if (WordAt(_current + 1, "for"))
+        {
+            return true;
+        }
+
+        if (WordAt(_current + 1, "the") && IsAudience(_current + 2) && WordAt(_current + 3, "for"))
+        {
+            return true;
+        }
+
+        return IsAudience(_current + 1) && WordAt(_current + 2, "for");
+    }
+
+    private bool IsPromptFor()
+    {
+        if (!WordAt(_current, "prompt") || WordAt(_current + 1, "is"))
+        {
+            return false;
+        }
+
+        if (WordAt(_current + 1, "for"))
+        {
+            return true;
+        }
+
+        return WordAt(_current + 1, "the") && IsAudience(_current + 2) && WordAt(_current + 3, "for");
+    }
+
+    private bool IsAudience(int index) =>
+        WordAt(index, "user", "person", "someone", "operator", "human", "reader");
+
+    private ExprAst ParseReadPrompt()
+    {
+        var start = Advance().Span;
+        var prompt = ParseUnary();
+        return Host("read", start, prompt.Span, prompt);
+    }
+
+    private ExprAst ParseUserPrompt()
+    {
+        var start = Advance().Span;
+        if (WordAt(_current, "the"))
+        {
+            Advance();
+        }
+
+        if (IsAudience(_current))
+        {
+            Advance();
+        }
+
+        if (WordAt(_current, "for"))
+        {
+            Advance();
+        }
+
+        var prompt = ParseMessage(start);
+        return Host("read", start, prompt.Span, prompt);
+    }
+
+    private ExprAst ParsePrompt()
+    {
+        var start = Advance().Span;
+        if (WordAt(_current, "the"))
+        {
+            Advance();
+        }
+
+        if (IsAudience(_current))
+        {
+            Advance();
+        }
+
+        if (WordAt(_current, "for"))
+        {
+            Advance();
+        }
+
+        var prompt = ParseMessage(start);
+        return Host("read", start, prompt.Span, prompt);
+    }
+
+    /// <summary>A quoted value, a name, or the rest of the line kept as text.</summary>
+    private ExprAst ParseMessage(SourceSpan start)
+    {
+        var simple = IsAt(_current, TokenKind.StringLiteral)
+            || IsAt(_current, TokenKind.LeftParen)
+            || IsAt(_current, TokenKind.IntegerLiteral)
+            || (IsAt(_current, TokenKind.The) && IsAt(_current + 1, TokenKind.Identifier) && IsLineEnd(_current + 2));
+        if (simple)
+        {
+            return ParseUnary();
+        }
+
+        var words = new List<string>();
+        var end = start;
+        while (!IsAtEnd() && !Check(TokenKind.NewLine) && !Check(TokenKind.Dedent))
+        {
+            var token = Advance();
+            words.Add(token.Text);
+            end = token.Span;
+        }
+
+        if (words.Count == 0)
+        {
+            _diagnostics.Error("E1104", "Expected a message.", _filePath, Peek().Span);
+            return new LiteralExprAst("", start);
+        }
+
+        return new LiteralExprAst(string.Join(' ', words), Combine(start, end));
+    }
+
+    private bool IsLineEnd(int index) =>
+        index >= _tokens.Count
+        || _tokens[index].Kind is TokenKind.NewLine or TokenKind.EndOfFile or TokenKind.Dedent or TokenKind.Indent;
+
+    private static readonly string[][] ParentHeads =
+    [
+        ["containing", "folder", "of"],
+        ["containing", "directory", "of"],
+        ["parent", "folder", "of"],
+        ["parent", "directory", "of"],
+        ["parent", "dir", "of"]
+    ];
+
+    private static readonly string[][] LeafHeads =
+    [
+        ["file", "name", "of"],
+        ["filename", "of"],
+        ["base", "name", "of"],
+        ["leaf", "name", "of"],
+        ["leaf", "of"]
+    ];
+
+    private static readonly string[][] ResolveHeads =
+    [
+        ["full", "path", "of"],
+        ["absolute", "path", "of"],
+        ["resolved", "path", "of"],
+        ["complete", "path", "of"]
+    ];
+
+    private static readonly string[][] JoinHeads =
+    [
+        ["combined", "path", "of"],
+        ["joined", "path", "of"],
+        ["path", "joining"],
+        ["join", "of"]
+    ];
+
+    private ExprAst? ParseClear()
+    {
+        if (WordAt(_current, "cls") && IsLineEnd(_current + 1))
+        {
+            var token = Advance();
+            return Host("clear", token.Span, token.Span);
+        }
+
+        if (!WordAt(_current, "clear", "wipe", "erase", "blank", "cls"))
+        {
+            return null;
+        }
+
+        var nounAt = WordAt(_current + 1, "the") ? _current + 2 : _current + 1;
+        if (!WordAt(nounAt, "screen", "console", "window", "display", "terminal", "host") || !IsLineEnd(nounAt + 1))
+        {
+            return null;
+        }
+
+        var start = Advance().Span;
+        if (WordAt(_current, "the"))
+        {
+            Advance();
+        }
+
+        var end = Advance().Span;
+        return Host("clear", start, end);
+    }
+
+    private ExprAst? ParseWait()
+    {
+        if (!WordAt(_current, "wait", "pause", "sleep", "hold", "delay") || WordAt(_current + 1, "is"))
+        {
+            return null;
+        }
+
+        var index = _current + 1;
+        if (WordAt(index, "for"))
+        {
+            index++;
+        }
+
+        if (IsAt(index, TokenKind.IntegerLiteral))
+        {
+            index++;
+        }
+        else if (IsAt(index, TokenKind.The) && IsAt(index + 1, TokenKind.Identifier))
+        {
+            index += 2;
+        }
+        else
+        {
+            return null;
+        }
+
+        if (IsDuration(index))
+        {
+            index++;
+        }
+
+        if (!IsLineEnd(index))
+        {
+            return null;
+        }
+
+        var start = Advance().Span;
+        if (WordAt(_current, "for"))
+        {
+            Advance();
+        }
+
+        var amount = ParseUnary();
+        var kind = "sleep";
+        if (IsDuration(_current))
+        {
+            kind = SleepKind(Peek().Text);
+            Advance();
+        }
+
+        return Host(kind, start, Previous().Span, amount);
+    }
+
+    private ExprAst? ParseStopWith()
+    {
+        if (!WordAt(_current, "stop", "halt", "fail", "abort", "quit", "exit", "die", "end") || !WordAt(_current + 1, "with"))
+        {
+            return null;
+        }
+
+        var start = Advance().Span;
+        Advance();
+        var message = ParseMessage(start);
+        return Host("stop", start, message.Span, message);
+    }
+
+    private ExprAst? ParseHostMessage()
+    {
+        if (!WordAt(_current, "warn", "caution", "alert", "note", "mention", "verbose") || WordAt(_current + 1, "is"))
+        {
+            return null;
+        }
+
+        var start = Advance();
+        var kind = start.Text.ToLowerInvariant() is "note" or "mention" or "verbose" ? "note" : "warn";
+        var message = ParseMessage(start.Span);
+        return Host(kind, start.Span, message.Span, message);
+    }
+
+    private ExprAst? ParseGo()
+    {
+        var enter = WordAt(_current, "enter") && !WordAt(_current + 1, "is");
+        var directed = WordAt(_current, "go", "change", "switch", "cd", "head", "move", "relocate") && WordAt(_current + 1, "to");
+        if (!enter && !directed)
+        {
+            return null;
+        }
+
+        var start = Advance().Span;
+        if (directed)
+        {
+            Advance();
+        }
+
+        var path = ParseUnary();
+        return Host("go", start, path.Span, path);
+    }
+
+    private ExprAst? ParseTransfer()
+    {
+        string? kind = null;
+        var links = new[] { "to", "onto", "into" };
+        var pathFirst = false;
+        if (WordAt(_current, "add", "append", "tack"))
+        {
+            kind = "add";
+        }
+        else if (WordAt(_current, "write", "save", "overwrite"))
+        {
+            kind = "write";
+            if (SeesAhead("with") && !SeesAhead("to") && !SeesAhead("onto") && !SeesAhead("into"))
+            {
+                links = ["with"];
+                pathFirst = true;
+            }
+        }
+        else if (WordAt(_current, "copy", "duplicate"))
+        {
+            kind = "copy";
+        }
+        else if (WordAt(_current, "move", "relocate"))
+        {
+            if (WordAt(_current + 1, "to"))
+            {
+                return null;
+            }
+
+            kind = "move";
+        }
+        else if (WordAt(_current, "rename", "retitle"))
+        {
+            kind = "rename";
+            links = ["to", "as"];
+        }
+
+        if (kind is null || !SeesAhead(links))
+        {
+            return null;
+        }
+
+        var mark = _current;
+        var start = Advance().Span;
+        var first = ParseOperand();
+        if (!WordAt(_current, links))
+        {
+            _current = mark;
+            return null;
+        }
+
+        Advance();
+        var second = ParseOperand();
+        var value = pathFirst ? second : first;
+        var path = pathFirst ? first : second;
+        return Host(kind, start, second.Span, value, path);
+    }
+
+    private ExprAst? ParseRemove()
+    {
+        if (!WordAt(_current, "remove", "delete", "erase", "wipe"))
+        {
+            return null;
+        }
+
+        var start = Advance().Span;
+        var path = ParseUnary();
+        var recurse = false;
+        if (WordAt(_current, "recursively"))
+        {
+            Advance();
+            recurse = true;
+        }
+        else if (WordAt(_current, "and") && WordAt(_current + 1, "everything") && WordAt(_current + 2, "in") && WordAt(_current + 3, "it"))
+        {
+            Advance();
+            Advance();
+            Advance();
+            Advance();
+            recurse = true;
+        }
+        else if (WordAt(_current, "and") && WordAt(_current + 1, "below"))
+        {
+            Advance();
+            Advance();
+            recurse = true;
+        }
+
+        return Host(recurse ? "removeAll" : "remove", start, Previous().Span, path);
+    }
+
+    private ExprAst? ParseCreate()
+    {
+        if (!WordAt(_current, "create", "make"))
+        {
+            return null;
+        }
+
+        var nounAt = WordAt(_current + 1, "a", "an", "the") ? _current + 2 : _current + 1;
+        if (!WordAt(nounAt, "folder", "directory", "dir", "file"))
+        {
+            return null;
+        }
+
+        var start = Advance().Span;
+        if (WordAt(_current, "a", "an", "the"))
+        {
+            Advance();
+        }
+
+        var noun = Advance();
+        var file = noun.Text.Equals("file", StringComparison.OrdinalIgnoreCase);
+        ExprAst path;
+        if (Check(TokenKind.NewLine) || IsAtEnd() || Check(TokenKind.Dedent))
+        {
+            path = new NameExprAst(noun.Text.ToLowerInvariant(), noun.Span);
+        }
+        else
+        {
+            path = ParseUnary();
+        }
+
+        return Host(file ? "createFile" : "createDir", start, path.Span, path);
+    }
+
+    private ExprAst? ParseControl()
+    {
+        if (!WordAt(_current, "start", "launch", "open", "run", "stop", "kill", "end", "halt", "abort", "restart"))
+        {
+            return null;
+        }
+
+        if (WordAt(_current, "run") && (IsAt(_current + 1, TokenKind.StringLiteral)
+            || WordAt(_current + 1, "script")
+            || (WordAt(_current + 1, "the") && WordAt(_current + 2, "script"))))
+        {
+            return null;
+        }
+
+        if (WordAt(_current + 1, "with"))
+        {
+            return null;
+        }
+
+        var nounAt = WordAt(_current + 1, "the", "a", "an") ? _current + 2 : _current + 1;
+        if (_tokens.Count <= nounAt || _tokens[nounAt].Kind != TokenKind.Identifier)
+        {
+            return null;
+        }
+
+        var kind = ControlKind(Peek().Text, _tokens[nounAt].Text);
+        if (kind is null)
+        {
+            return null;
+        }
+
+        var start = Advance().Span;
+        if (WordAt(_current, "the", "a", "an"))
+        {
+            Advance();
+        }
+
+        var noun = Advance();
+        ExprAst value;
+        if (Check(TokenKind.NewLine) || IsAtEnd() || Check(TokenKind.Dedent))
+        {
+            value = new NameExprAst(noun.Text.ToLowerInvariant(), noun.Span);
+        }
+        else
+        {
+            value = ParseUnary();
+        }
+
+        return Host(kind, start, value.Span, value);
+    }
+
+    private ExprAst? ParsePathStatement()
+    {
+        if (LineHasAssignment() || !PathHeadAhead())
+        {
+            return null;
+        }
+
+        return ParseExpression();
+    }
+
+    private ExprAst? TryParsePathCommand(SourceSpan start)
+    {
+        if (TakeHead(ParentHeads))
+        {
+            var path = ParseUnary();
+            return Host("parent", start, path.Span, path);
+        }
+
+        if (TakeHead(LeafHeads))
+        {
+            var path = ParseUnary();
+            return Host("leaf", start, path.Span, path);
+        }
+
+        if (TakeHead(ResolveHeads))
+        {
+            var path = ParseUnary();
+            return Host("resolve", start, path.Span, path);
+        }
+
+        if (TakeHead(JoinHeads))
+        {
+            var folder = ParseUnary();
+            if (!WordAt(_current, "and"))
+            {
+                _diagnostics.Error("E1104", "Expected 'and', as in the combined path of the folder and the name.", _filePath, Peek().Span);
+                return new LiteralExprAst("", Combine(start, folder.Span));
+            }
+
+            Advance();
+            var child = ParseUnary();
+            return Host("join", start, child.Span, folder, child);
+        }
+
+        return null;
+    }
+
+    private bool TakeHead(string[][] heads)
+    {
+        foreach (var head in heads)
+        {
+            if (!HeadAt(_current, head))
+            {
+                continue;
+            }
+
+            foreach (var _ in head)
+            {
+                Advance();
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool PathHeadAhead()
+    {
+        var index = WordAt(_current, "the", "a", "an") ? _current + 1 : _current;
+        return AnyHead(index, ParentHeads) || AnyHead(index, LeafHeads) || AnyHead(index, ResolveHeads) || AnyHead(index, JoinHeads);
+    }
+
+    private bool AnyHead(int index, string[][] heads)
+    {
+        foreach (var head in heads)
+        {
+            if (HeadAt(index, head))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool HeadAt(int index, string[] head)
+    {
+        for (var n = 0; n < head.Length; n++)
+        {
+            if (!WordAt(index + n, head[n]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool SeesAhead(params string[] words)
+    {
+        for (var i = _current + 1; i < _tokens.Count && !IsLineEnd(i); i++)
+        {
+            if (WordAt(i, words))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsDuration(int index) =>
+        WordAt(index, "second", "seconds", "sec", "secs", "minute", "minutes", "min", "mins", "hour", "hours", "hr", "hrs", "millisecond", "milliseconds", "ms", "msec");
+
+    private static string SleepKind(string unit) => unit.ToLowerInvariant() switch
+    {
+        "minute" or "minutes" or "min" or "mins" => "sleepmin",
+        "hour" or "hours" or "hr" or "hrs" => "sleephour",
+        "millisecond" or "milliseconds" or "ms" or "msec" => "sleepms",
+        _ => "sleep"
+    };
+
+    private static string? ControlKind(string verb, string noun)
+    {
+        verb = verb.ToLowerInvariant();
+        noun = noun.ToLowerInvariant();
+        var starting = verb is "start" or "launch" or "open" or "run";
+        var stopping = verb is "stop" or "kill" or "end" or "halt" or "abort";
+        var program = noun is "program" or "app" or "application" or "executable" or "tool";
+        var service = noun is "service" or "daemon";
+        var process = noun is "process";
+        if (program && starting)
+        {
+            return "startProgram";
+        }
+
+        if (service && starting)
+        {
+            return "startService";
+        }
+
+        if (service && stopping)
+        {
+            return "stopService";
+        }
+
+        if (service && verb == "restart")
+        {
+            return "restartService";
+        }
+
+        if (process && stopping)
+        {
+            return "stopProcess";
+        }
+
+        if (process && starting)
+        {
+            return "startProgram";
+        }
+
+        return null;
+    }
+
+    /// <summary>One value in a file sentence. Link words such as "onto" stay outside the name.</summary>
+    private ExprAst ParseOperand()
+    {
+        if (IsAt(_current, TokenKind.StringLiteral) || IsAt(_current, TokenKind.LeftParen) || IsAt(_current, TokenKind.IntegerLiteral))
+        {
+            return ParseUnary();
+        }
+
+        if (WordAt(_current, "the", "a", "an") && IsAt(_current + 1, TokenKind.Identifier) && !IsLink(_current + 1))
+        {
+            var start = Advance().Span;
+            var name = Advance();
+            return new NameExprAst(name.Text, Combine(start, name.Span));
+        }
+
+        if (IsAt(_current, TokenKind.Identifier) && !IsLink(_current))
+        {
+            var name = Advance();
+            return new NameExprAst(name.Text, name.Span);
+        }
+
+        return ParseUnary();
+    }
+
+    private bool IsLink(int index) =>
+        WordAt(index, "to", "onto", "into", "as", "with");
+
+    private ExprAst Host(string name, SourceSpan start, SourceSpan end, params ExprAst[] args) =>
+        new CallExprAst("writ.host." + name, args, Combine(start, end));
+
+    private bool WordAt(int index, params string[] words)
+    {
+        if ((uint)index >= (uint)_tokens.Count)
+        {
+            return false;
+        }
+
+        var text = _tokens[index].Text;
+        foreach (var word in words)
+        {
+            if (text.Equals(word, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private SayStmtAst ParseSay()
     {
-        var start = Consume(TokenKind.Say, "Expected 'say'.").Span;
+        var start = Peek().Span;
+        if (!Check(TokenKind.Say) && !IsConsoleVerb())
+        {
+            _diagnostics.Error("E1104", "Expected 'say', 'display', or 'print'.", _filePath, start);
+        }
+        else
+        {
+            Advance();
+        }
         var parts = new List<ExprAst> { ParseComparison() };
         while (Match(TokenKind.And))
         {
@@ -521,7 +1306,7 @@ public sealed class Parser
     {
         var start = _current;
         var expr = ParseExpression();
-        if (Check(TokenKind.NewLine) || Check(TokenKind.Dedent) || Check(TokenKind.EndOfFile))
+        if (Check(TokenKind.NewLine) || Check(TokenKind.Dedent) || IsAtEnd())
         {
             return expr;
         }
@@ -535,7 +1320,7 @@ public sealed class Parser
         var start = Peek().Span;
         var parts = new List<string>();
         var end = start;
-        while (!Check(TokenKind.NewLine) && !Check(TokenKind.Dedent) && !Check(TokenKind.EndOfFile))
+        while (!IsAtEnd() && !Check(TokenKind.NewLine) && !Check(TokenKind.Dedent))
         {
             var tok = Advance();
             parts.Add(tok.Kind == TokenKind.StringLiteral ? $"\"{tok.Text}\"" : tok.Text);
@@ -774,7 +1559,12 @@ public sealed class Parser
 
         if (Check(TokenKind.Ask))
         {
-            return ParseAsk();
+            return IsUserPrompt() ? ParseUserPrompt() : ParseAsk();
+        }
+
+        if (IsReadPrompt())
+        {
+            return ParseReadPrompt();
         }
 
         if (IsRunCall())
@@ -903,8 +1693,8 @@ public sealed class Parser
         Consume(TokenKind.To, "Expected 'to' after the capability name.");
         var words = new List<string>();
         var end = capability.Span;
-        while (!Check(TokenKind.With) && !Check(TokenKind.NewLine) && !Check(TokenKind.Dedent)
-               && !Check(TokenKind.Indent) && !Check(TokenKind.EndOfFile) && !Check(TokenKind.Comma))
+        while (!IsAtEnd() && !Check(TokenKind.With) && !Check(TokenKind.NewLine) && !Check(TokenKind.Dedent)
+               && !Check(TokenKind.Indent) && !Check(TokenKind.Comma))
         {
             var token = Advance();
             words.Add(token.Text);
@@ -1164,6 +1954,11 @@ public sealed class Parser
 
             var variable = nameToken.Literal as string ?? nameToken.Text;
             return new CallExprAst("env", [new LiteralExprAst(variable, nameToken.Span)], Combine(start, nameToken.Span));
+        }
+
+        if (article && TryParsePathCommand(start) is { } pathCommand)
+        {
+            return pathCommand;
         }
 
         var name = ReadWords();
@@ -1456,7 +2251,8 @@ public sealed class Parser
         return found;
     }
 
-    private bool Check(TokenKind kind) => !IsAtEnd() && Peek().Kind == kind;
+    private bool Check(TokenKind kind) =>
+        kind == TokenKind.EndOfFile ? IsAtEnd() : !IsAtEnd() && Peek().Kind == kind;
 
     private bool CheckNext(TokenKind kind) =>
         _current + 1 < _tokens.Count && _tokens[_current + 1].Kind == kind;

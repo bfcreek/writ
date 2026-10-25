@@ -1,14 +1,13 @@
 using Writ.Compiler.Compilation;
 using Writ.Compiler.Execution;
 using Writ.Compiler.Ir;
-using Writ.Runtime;
 
 namespace Writ.Tests;
 
 public class FailureHandlingTests
 {
     [Fact]
-    public void Try_if_that_fails_finally_binds_and_agrees_across_targets()
+    public void Try_if_that_fails_finally_binds_and_runs()
     {
         var path = TestPaths.Sample("careful-retry.writ");
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
@@ -27,11 +26,6 @@ public class FailureHandlingTests
         Assert.Equal("retried", pwsh.Value);
         Assert.Contains("Looked at p1", pwsh.Output);
         Assert.Contains("Looked at p2", pwsh.Output);
-
-        CapabilityRuntime.Reset();
-        var dotnet = new RoslynExecutor().Execute(result.GeneratedCSharp!, "careful-retry", "RecoverCarefully", input);
-        Assert.True(dotnet.Success, string.Join(Environment.NewLine, dotnet.Errors));
-        Assert.Equal("retried", dotnet.Value);
     }
 
     [Fact]

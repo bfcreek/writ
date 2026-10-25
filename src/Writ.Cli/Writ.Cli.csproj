@@ -11,7 +11,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Writ.Compiler\Writ.Compiler.csproj" />
-    <ProjectReference Include="..\Writ.Runtime\Writ.Runtime.csproj" />
   </ItemGroup>
 
   <ItemGroup>

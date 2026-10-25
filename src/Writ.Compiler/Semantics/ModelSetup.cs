@@ -25,6 +25,12 @@ public sealed record ModelOptions
 
     /// <summary>Reads a named environment variable. Tests supply a stand-in so they never touch the process environment.</summary>
     public Func<string, string?>? ReadEnvironment { get; init; }
+
+    /// <summary>
+    /// When set, each rule decision and each model call is written here.
+    /// The command line passes standard error for <c>--debug</c>.
+    /// </summary>
+    public TextWriter? Debug { get; init; }
 }
 
 /// <summary>The model a compilation will call, and where that choice was written.</summary>
@@ -327,7 +333,7 @@ public static class ModelSetup
             timeout,
             string.IsNullOrWhiteSpace(apiKey) ? null : apiKey,
             provider == "copilot",
-            options.Handler));
+            options.Handler), options.Debug);
         return new ResolvedModel(chat, new ModelChoice(provider, profileName, model, path));
     }
 

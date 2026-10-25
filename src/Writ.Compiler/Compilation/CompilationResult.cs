@@ -11,8 +11,7 @@ public sealed record CompilationResult(
     IReadOnlyList<Diagnostic> Diagnostics,
     ProgramAst? Ast,
     IrModule? Ir,
-    string? GeneratedCSharp,
-    string? GeneratedPowerShell = null)
+    string? GeneratedPowerShell)
 {
     /// <summary>Capabilities discovered while binding (manifests and MCP servers), in declaration order.</summary>
     public IReadOnlyList<LoadedCapability> Capabilities { get; init; } = [];

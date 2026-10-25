@@ -2,7 +2,7 @@ namespace Writ.Compiler.Capabilities;
 
 /// <summary>
 /// Future provider seam (Milestone D). Compile-time loading uses <see cref="ICapabilityLoader"/>,
-/// which must not invoke operations. Runtime calls go through Writ.Runtime.CapabilityRuntime.
+/// which must not invoke operations. Runtime calls go through the generated PowerShell script.
 /// </summary>
 public interface ICapabilityProvider
 {

@@ -7,24 +7,20 @@ namespace Writ.Tests;
 public class ScriptCallTests
 {
     [Fact]
-    public void Writ_and_powershell_scripts_agree_across_targets()
+    public void Writ_and_powershell_scripts_both_run()
     {
         var path = TestPaths.Sample(Path.Combine("scripts", "call-both.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Contains("Invoke-WritScript", result.GeneratedPowerShell);
-        Assert.Contains("ScriptRuntime.Run", result.GeneratedCSharp);
         var calls = Walk(result.Ir!.Functions.SelectMany(f => f.Body)).OfType<IrScriptCall>().ToList();
         Assert.Contains(calls, c => c.Kind == "writ");
         Assert.Contains(calls, c => c.Kind == "powershell");
 
         var input = File.ReadAllText(TestPaths.Sample(Path.Combine("scripts", "input.json")));
-        var dotnet = new RoslynExecutor().Execute(result.GeneratedCSharp!, "call-both", "Main", input);
-        Assert.True(dotnet.Success, string.Join(Environment.NewLine, dotnet.Errors));
         var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "call-both", "Main", input);
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
-        Assert.Equal("Hello, Ada (42)", dotnet.Value);
-        Assert.Equal(dotnet.Value, pwsh.Value);
+        Assert.Equal("Hello, Ada (42)", pwsh.Value);
     }
 
     [Fact]

@@ -63,19 +63,7 @@ public static class EmissionCatalog
         Blocker = static _ => null
     };
 
-    public static readonly EmissionPlan CSharpLibrary = new()
-    {
-        Id = "csharp-library",
-        Language = "csharp",
-        Approach = "library",
-        Architecture = "in-process",
-        Summary = "C# library called in-process",
-        Rank = 1,
-        Traits = Traits("csharp", "library", "in-process", "compiled"),
-        Blocker = CSharpBlocker
-    };
-
-    public static IReadOnlyList<EmissionPlan> All { get; } = [PowerShellScript, CSharpLibrary];
+    public static IReadOnlyList<EmissionPlan> All { get; } = [PowerShellScript];
 
     public static IReadOnlySet<string> TraitsVocabulary { get; } = All
         .SelectMany(plan => plan.Traits)
@@ -86,7 +74,7 @@ public static class EmissionCatalog
 
     /// <summary>
     /// <c>auto</c> (or an empty target) lets constraints choose.
-    /// <c>powershell</c> and <c>dotnet</c> force one emission.
+    /// <c>powershell</c> forces the script emission.
     /// </summary>
     public static bool TryParseTarget(string? text, out string? id, out string? error)
     {
@@ -108,82 +96,13 @@ public static class EmissionCatalog
             return true;
         }
 
-        if (key.Equals("dotnet", StringComparison.OrdinalIgnoreCase) ||
-            key.Equals("csharp", StringComparison.OrdinalIgnoreCase) ||
-            key.Equals("cs", StringComparison.OrdinalIgnoreCase) ||
-            key.Equals(CSharpLibrary.Id, StringComparison.OrdinalIgnoreCase))
-        {
-            id = CSharpLibrary.Id;
-            error = null;
-            return true;
-        }
-
         id = null;
-        error = $"Unknown target '{text}'. Use auto, powershell, or dotnet.";
+        error = $"Unknown target '{text}'. Use auto or powershell.";
         return false;
     }
 
     private static HashSet<string> Traits(params string[] traits) =>
         new(traits, StringComparer.OrdinalIgnoreCase);
-
-    private static string? CSharpBlocker(IrModule module)
-    {
-        foreach (var function in module.Functions)
-        {
-            foreach (var node in Walk(function.Body))
-            {
-                if (node is IrCommand command)
-                {
-                    return $"calls {command.Name}, a PowerShell cmdlet this emission cannot run";
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static IEnumerable<IrNode> Walk(IEnumerable<IrNode> nodes)
-    {
-        foreach (var node in nodes)
-        {
-            yield return node;
-            foreach (var child in Children(node))
-            {
-                foreach (var inner in Walk([child]))
-                {
-                    yield return inner;
-                }
-            }
-        }
-    }
-
-    private static IEnumerable<IrNode> Children(IrNode node) => node switch
-    {
-        IrAssign a => [a.Value],
-        IrReturn r => [r.Value],
-        IrIf i => new[] { i.Condition }.Concat(i.ThenBody).Concat(i.OtherwiseBody ?? []),
-        IrForEach f => new[] { f.Collection }.Concat(f.Body),
-        IrWhile w => new[] { w.Condition }.Concat(w.Body),
-        IrTry t => t.Body.Concat(t.OnFailure ?? []).Concat(t.Finally ?? []),
-        IrSay s => s.Parts,
-        IrBinary b => [b.Left, b.Right],
-        IrUnary u => [u.Operand],
-        IrCall c => c.Arguments,
-        IrFieldAccess f => [f.Target],
-        IrSumProjection s => [s.Collection, s.Projection],
-        IrFilter f => [f.Collection, f.Predicate],
-        IrCapabilityCall c => c.Arguments.Select(a => a.Value),
-        IrCommand c => c.Arguments.Select(a => a.Value),
-        IrScriptCall s => s.Arguments.Select(a => a.Value),
-        IrSequence s => s.Steps,
-        IrSort sort => [sort.Collection],
-        IrTake t => [t.Collection, t.Count],
-        IrSelectField s => [s.Collection],
-        IrValidate v => [v.Value],
-        IrRetry r => [r.Operation],
-        IrListLiteral l => l.Elements,
-        _ => []
-    };
 }
 
 /// <summary>

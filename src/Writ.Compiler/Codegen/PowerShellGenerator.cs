@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Writ.Compiler.Ir;
 
 namespace Writ.Compiler.Codegen;
@@ -107,8 +108,10 @@ public sealed class PowerShellGenerator
 
         sb.Append(_converters);
         sb.Append(body);
-        // Dot-sourcing (what `writ run` does) only defines the functions. Running the file
-        // lists referenced tools when asked, and otherwise runs the entry program.
+        EmitToolCheck(sb, module);
+        // Running the file checks that required MCP tools are still offered, then runs the entry.
+        // -ListTools prints that list and does not ask the servers.
+        // Dot-sourcing defines the functions. __Invoke_ checks tools, which is how writ run starts an entry.
         sb.AppendLine("if ($MyInvocation.InvocationName -ne '.') {");
         sb.AppendLine($"    if (${listTools}) {{");
         foreach (var tool in ReferencedTools(module))
@@ -118,6 +121,7 @@ public sealed class PowerShellGenerator
 
         sb.AppendLine("        return");
         sb.AppendLine("    }");
+        sb.AppendLine("    __Assert-WritMcpTools");
         if (entry is not null)
         {
             sb.Append($"    {Sanitize(entry.Name)}");
@@ -145,7 +149,32 @@ public sealed class PowerShellGenerator
         return "ListTools";
     }
 
-    private readonly record struct ReferencedTool(string Alias, string Operation, string Transport, string Endpoint);
+    private readonly record struct ReferencedTool(string Alias, string Operation, string Transport, string Endpoint, string WorkingDirectory);
+
+    /// <summary>
+    /// Asks each MCP server this script calls for its tool list and stops when a required tool is missing.
+    /// An empty body means the script calls no MCP tools.
+    /// </summary>
+    private static void EmitToolCheck(StringBuilder sb, IrModule module)
+    {
+        var tools = ReferencedTools(module);
+        sb.AppendLine("function __Assert-WritMcpTools {");
+        if (tools.Count > 0)
+        {
+            var payload = tools.Select(tool => new Dictionary<string, string>
+            {
+                ["alias"] = tool.Alias,
+                ["operation"] = tool.Operation,
+                ["transport"] = tool.Transport,
+                ["endpoint"] = tool.Endpoint,
+                ["workingDirectory"] = tool.WorkingDirectory
+            }).ToList();
+            sb.AppendLine($"    Assert-WritMcpTools -RequiredJson {Quote(JsonSerializer.Serialize(payload))}");
+        }
+
+        sb.AppendLine("}");
+        sb.AppendLine();
+    }
 
     /// <summary>MCP calls baked into this script. Listing them does not start a server.</summary>
     private static List<ReferencedTool> ReferencedTools(IrModule module)
@@ -178,7 +207,8 @@ public sealed class PowerShellGenerator
                             call.Alias,
                             call.Operation,
                             string.IsNullOrEmpty(call.Transport) ? "stdio" : call.Transport,
-                            call.Endpoint ?? ""));
+                            call.Endpoint ?? "",
+                            call.WorkingDirectory ?? ""));
                     }
 
                     foreach (var argument in call.Arguments)
@@ -381,6 +411,7 @@ public sealed class PowerShellGenerator
     private void EmitInvoker(StringBuilder sb, IrFunction function)
     {
         sb.AppendLine($"function __Invoke_{Sanitize(function.Name)}($__input) {{");
+        sb.AppendLine("    __Assert-WritMcpTools");
         foreach (var parameter in function.Parameters)
         {
             sb.AppendLine($"    ${Var(parameter.Name)} = {Convert($"$__input.{Sanitize(parameter.Name)}", parameter.Type)}");
@@ -473,6 +504,10 @@ public sealed class PowerShellGenerator
 
             case IrSay say:
                 sb.AppendLine($"{pad}Write-Host (@({string.Join(", ", say.Parts.Select(p => $"(ConvertTo-IntentString -Value {Expression(p)})"))}) -join ' ')");
+                break;
+
+            case IrCommand { Name: "throw" } thrown:
+                sb.AppendLine($"{pad}throw {(thrown.Arguments.Count == 0 ? "''" : Expression(thrown.Arguments[0].Value))}");
                 break;
 
             case IrTry tryNode:

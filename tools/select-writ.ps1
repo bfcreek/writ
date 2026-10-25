@@ -1,9 +1,14 @@
 # Lists .writ files in ./programs, asks which one to compile, and writes the
 # PowerShell emission (script, Writ.psm1, and IR) to ./out.
+# -Debug also prints each rule decision and model call.
+param(
+    [switch]$Debug
+)
+
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$programsDir = Join-Path $repoRoot 'programs'
+$programsDir = Join-Path $repoRoot 'samples'
 $outDir = Join-Path $repoRoot 'out'
 $cliProject = Join-Path $repoRoot 'src\Writ.Cli\Writ.Cli.csproj'
 
@@ -16,7 +21,7 @@ if ($files.Count -eq 0) {
     Write-Error "No .writ files in $programsDir"
 }
 
-Write-Host "Writ programs in .\programs"
+Write-Host "Writ programs in .\samples"
 Write-Host ''
 for ($i = 0; $i -lt $files.Count; $i++) {
     Write-Host ('  {0}. {1}' -f ($i + 1), $files[$i].Name)
@@ -37,7 +42,12 @@ $selected = $files[$index]
 Write-Host ''
 Write-Host "Compiling $($selected.Name) to PowerShell in .\out"
 
-& dotnet run --project $cliProject -- compile $selected.FullName --out $outDir --target powershell
+$debugFlag = @()
+if ($Debug) {
+    $debugFlag = @('--debug')
+}
+
+& dotnet run --project $cliProject -- compile $selected.FullName --out $outDir --target powershell @debugFlag
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

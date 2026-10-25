@@ -8,7 +8,6 @@ using Writ.Compiler.Codegen;
 using Writ.Compiler.Compilation;
 using Writ.Compiler.Execution;
 using Writ.Compiler.Ir;
-using Writ.Runtime;
 
 namespace Writ.Tests;
 
@@ -57,7 +56,7 @@ public class McpTests
     }
 
     [Fact]
-    public void Direct_mcp_program_runs_on_both_targets()
+    public void Direct_mcp_program_runs()
     {
         var path = TestPaths.Sample("mcp-payments.writ");
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
@@ -68,11 +67,6 @@ public class McpTests
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Equal(1L, Convert.ToInt64(pwsh.Value));
         Assert.Equal(2, pwsh.CapabilityCalls);
-
-        CapabilityRuntime.Reset();
-        var dotnet = new RoslynExecutor().Execute(result.GeneratedCSharp!, "mcp-payments", "RecoverFailures", input);
-        Assert.True(dotnet.Success, string.Join(Environment.NewLine, dotnet.Errors));
-        Assert.Equal(1L, Convert.ToInt64(dotnet.Value));
     }
 
     [Fact]
@@ -349,7 +343,8 @@ public class McpTests
             Assert.StartsWith("payments.list_failed (stdio) ", lines[0]);
             Assert.StartsWith("payments.retry (stdio) ", lines[1]);
             Assert.Contains("mcp-test-server.ps1", stdout);
-            Assert.False(File.Exists(log) && File.ReadAllText(log).Contains("tools/call"));
+            Assert.Contains("__Assert-WritMcpTools", result.GeneratedPowerShell);
+            Assert.False(File.Exists(log));
         }
         finally
         {
@@ -385,6 +380,85 @@ public class McpTests
     }
 
     [Fact]
+    public void Starting_a_script_checks_required_tools_then_runs()
+    {
+        var (source, log) = TallyScript();
+        var result = new CompilationPipeline().Compile(source, Path.Combine(Path.GetTempPath(), "tally.writ"));
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Contains("Assert-WritMcpTools -RequiredJson", result.GeneratedPowerShell);
+
+        var temp = Path.Combine(Path.GetTempPath(), "intent-mcp-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var scriptPath = Path.Combine(temp, "tally.ps1");
+            File.WriteAllText(scriptPath, result.GeneratedPowerShell);
+            File.WriteAllText(Path.Combine(temp, "Writ.psm1"), PowerShellGenerator.RuntimeModuleSource);
+            var (code, stdout, stderr) = RunScript(scriptPath, new Dictionary<string, string?> { ["INTENT_MCP_LOG"] = log }, "-day", "2026-10-20");
+            Assert.True(code == 0, stderr + stdout);
+            Assert.Equal("2", stdout.Trim());
+            var methods = File.ReadAllLines(log);
+            var listed = Array.IndexOf(methods, "tools/list");
+            var called = Array.IndexOf(methods, "tools/call");
+            Assert.True(listed >= 0 && called > listed);
+        }
+        finally
+        {
+            Directory.Delete(temp, true);
+            if (File.Exists(log))
+            {
+                File.Delete(log);
+            }
+        }
+    }
+
+    [Fact]
+    public void Starting_a_script_stops_when_a_required_tool_is_missing()
+    {
+        var (source, log) = TallyScript();
+        var result = new CompilationPipeline().Compile(source, Path.Combine(Path.GetTempPath(), "tally.writ"));
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+
+        var temp = Path.Combine(Path.GetTempPath(), "intent-mcp-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        Environment.SetEnvironmentVariable("INTENT_MCP_OMIT", "list_failed");
+        Environment.SetEnvironmentVariable("INTENT_MCP_LOG", log);
+        try
+        {
+            var scriptPath = Path.Combine(temp, "tally.ps1");
+            File.WriteAllText(scriptPath, result.GeneratedPowerShell);
+            File.WriteAllText(Path.Combine(temp, "Writ.psm1"), PowerShellGenerator.RuntimeModuleSource);
+            var (code, stdout, stderr) = RunScript(scriptPath, new Dictionary<string, string?>
+            {
+                ["INTENT_MCP_LOG"] = log,
+                ["INTENT_MCP_OMIT"] = "list_failed"
+            }, "-day", "2026-10-20");
+            Assert.NotEqual(0, code);
+            Assert.Contains("payments.list_failed", stderr + stdout);
+            Assert.Contains("is not available", stderr + stdout);
+            var methods = File.ReadAllLines(log);
+            Assert.Contains("tools/list", methods);
+            Assert.DoesNotContain("tools/call", methods);
+
+            var ran = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "tally", "Main", """{ "day": "2026-10-20" }""");
+            Assert.False(ran.Success);
+            Assert.Contains("payments.list_failed", string.Join(Environment.NewLine, ran.Errors));
+            Assert.Contains("is not available", string.Join(Environment.NewLine, ran.Errors));
+            Assert.Equal(0, ran.CapabilityCalls);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("INTENT_MCP_OMIT", null);
+            Environment.SetEnvironmentVariable("INTENT_MCP_LOG", null);
+            Directory.Delete(temp, true);
+            if (File.Exists(log))
+            {
+                File.Delete(log);
+            }
+        }
+    }
+
+    [Fact]
     public void Rest_tool_is_discovered_and_runs_on_both_targets()
     {
         using var server = McpHttp.Start();
@@ -407,11 +481,6 @@ public class McpTests
         var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "echo", "Ping", "{}");
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors) + pwsh.Output);
         Assert.Equal("hi", pwsh.Value);
-
-        CapabilityRuntime.Reset();
-        var dotnet = new RoslynExecutor().Execute(result.GeneratedCSharp!, "echo", "Ping", "{}");
-        Assert.True(dotnet.Success, string.Join(Environment.NewLine, dotnet.Errors));
-        Assert.Equal("hi", dotnet.Value);
         Assert.Contains("tools/call", server.Methods);
     }
 
@@ -439,7 +508,26 @@ public class McpTests
         return JsonSerializer.Serialize(payload);
     }
 
-    private static (int Code, string Stdout, string Stderr) RunPwsh(string scriptPath, string argument)
+    private static (string Source, string Log) TallyScript()
+    {
+        var server = Path.Combine(TestPaths.RepoRoot(), "tools", "mcp-test-server.ps1").Replace('\\', '/');
+        var command = $"pwsh -NoProfile -NonInteractive -File {server}";
+        var log = Path.Combine(Path.GetTempPath(), "intent-mcp-" + Guid.NewGuid().ToString("N") + ".log");
+        var source = $$"""
+            Use payments from mcp "{{command}}"
+            Allow network access
+
+            When run, given a day which is a string, returning an integer
+                the failures are ask payments to list_failed with the day
+                return the count of the failures
+            """;
+        return (source, log);
+    }
+
+    private static (int Code, string Stdout, string Stderr) RunPwsh(string scriptPath, string argument) =>
+        RunScript(scriptPath, null, argument);
+
+    private static (int Code, string Stdout, string Stderr) RunScript(string scriptPath, IReadOnlyDictionary<string, string?>? environment, params string[] arguments)
     {
         var psi = new ProcessStartInfo("pwsh")
         {
@@ -447,9 +535,22 @@ public class McpTests
             RedirectStandardError = true,
             UseShellExecute = false
         };
-        foreach (var arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, argument })
+        foreach (var arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath })
         {
             psi.ArgumentList.Add(arg);
+        }
+
+        foreach (var arg in arguments)
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
+        if (environment is not null)
+        {
+            foreach (var pair in environment)
+            {
+                psi.Environment[pair.Key] = pair.Value;
+            }
         }
 
         using var process = Process.Start(psi)!;

@@ -78,7 +78,7 @@ public class ScriptEntryTests
     }
 
     [Fact]
-    public void Environment_and_places_agree_across_targets()
+    public void Environment_and_places_run()
     {
         var source = """
             To Locate, given a name which is a string, returning a string
@@ -92,16 +92,59 @@ public class ScriptEntryTests
         try
         {
             var input = """{ "name": "x" }""";
-            var dotnet = new RoslynExecutor().Execute(result.GeneratedCSharp!, "where", "Locate", input);
             var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "where", "Locate", input);
             Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
-            Assert.Equal(dotnet.Value, pwsh.Value);
             Assert.StartsWith("x=42 home=", (string)pwsh.Value!);
         }
         finally
         {
             Environment.SetEnvironmentVariable("INTENT_TEST_VALUE", null);
         }
+    }
+
+    [Fact]
+    public void Display_and_print_write_a_value()
+    {
+        foreach (var verb in new[] { "display", "print" })
+        {
+            var result = new CompilationPipeline().Compile($"""
+                {verb} "hello, world!"
+                """, "hello.writ");
+
+            Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+            var entry = Assert.Single(result.Ir!.Functions);
+            var say = Assert.IsType<IrSay>(Assert.Single(entry.Body));
+            var text = Assert.IsType<IrLiteral>(Assert.Single(say.Parts));
+            Assert.Equal("hello, world!", text.Value);
+            Assert.Contains("hello, world!", result.GeneratedPowerShell);
+        }
+    }
+
+    [Fact]
+    public void Sentences_are_what_the_script_does()
+    {
+        var result = new CompilationPipeline().Compile("""
+            say "hello"
+            """, "hello.writ");
+
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        var entry = Assert.Single(result.Ir!.Functions);
+        Assert.True(entry.IsEntry);
+        Assert.Empty(entry.Parameters);
+        Assert.Contains(entry.Body, node => node is IrSay);
+        Assert.Contains("hello", result.GeneratedPowerShell);
+    }
+
+    [Fact]
+    public void A_file_of_only_declarations_does_not_run()
+    {
+        var result = new CompilationPipeline().Compile("""
+            To Double, given a value which is an integer, returning an integer
+                return the value times 2
+            """, "double.writ");
+
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.DoesNotContain(result.Ir!.Functions, function => function.IsEntry);
     }
 
     [Fact]

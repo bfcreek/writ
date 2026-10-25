@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -28,8 +29,13 @@ public sealed class ChatLanguageModel : ILanguageModel
     };
 
     private readonly ChatEndpoint _endpoint;
+    private readonly TextWriter? _debug;
 
-    public ChatLanguageModel(ChatEndpoint endpoint) => _endpoint = endpoint;
+    public ChatLanguageModel(ChatEndpoint endpoint, TextWriter? debug = null)
+    {
+        _endpoint = endpoint;
+        _debug = debug;
+    }
 
     public async Task<ModelReading> ReadAsync(ModelRequest request, CancellationToken cancellationToken = default)
     {
@@ -37,6 +43,11 @@ public sealed class ChatLanguageModel : ILanguageModel
             ? new HttpClient()
             : new HttpClient(_endpoint.Handler, disposeHandler: false);
         client.Timeout = TimeSpan.FromSeconds(_endpoint.TimeoutSeconds);
+
+        if (_debug is not null)
+        {
+            ModelDebug.WriteChatRequest(_debug, _endpoint.Url, _endpoint.Model, _endpoint.Temperature, ModelMessages.Describe(request));
+        }
 
         using var message = new HttpRequestMessage(HttpMethod.Post, _endpoint.Url);
         message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -65,6 +76,7 @@ public sealed class ChatLanguageModel : ILanguageModel
         message.Content = new StringContent(JsonSerializer.Serialize(body, BodyOptions), Encoding.UTF8, "application/json");
 
         HttpResponseMessage response;
+        var watch = Stopwatch.StartNew();
         try
         {
             response = await client.SendAsync(message, cancellationToken).ConfigureAwait(false);
@@ -81,6 +93,11 @@ public sealed class ChatLanguageModel : ILanguageModel
         using (response)
         {
             var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (_debug is not null)
+            {
+                ModelDebug.WriteChatResponse(_debug, (int)response.StatusCode, text, watch.Elapsed);
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 var detail = text.Length > 300 ? text[..300] : text;

@@ -1,6 +1,7 @@
 # A tiny MCP server over stdio (newline-delimited JSON-RPC 2.0) used by Writ tests and samples.
 # It offers two tools and logs every JSON-RPC method it receives to $env:INTENT_MCP_LOG, so tests can
 # prove that `writ check` only discovers (initialize, tools/list) and never calls a tool.
+# $env:INTENT_MCP_OMIT is a comma-separated list of tool names to hide from tools/list.
 $ErrorActionPreference = 'Stop'
 $log = $env:INTENT_MCP_LOG
 
@@ -28,6 +29,15 @@ $tools = @(
         annotations = @{ readOnlyHint = $false; idempotentHint = $false }
     }
 )
+
+if ($env:INTENT_MCP_OMIT) {
+    $hidden = @{}
+    foreach ($name in ($env:INTENT_MCP_OMIT -split ',')) {
+        $trimmed = $name.Trim()
+        if ($trimmed) { $hidden[$trimmed] = $true }
+    }
+    $tools = @($tools | Where-Object { -not $hidden.ContainsKey([string]$_.name) })
+}
 
 $payments = @(
     @{ id = 'p1'; retryCount = 1 },

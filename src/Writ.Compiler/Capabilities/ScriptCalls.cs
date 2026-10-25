@@ -45,7 +45,8 @@ internal static class ScriptCalls
         ISemanticResolver semanticResolver,
         ICapabilityLoader capabilities,
         ILanguageModel model,
-        CmdletCatalog cmdlets)
+        CmdletCatalog cmdlets,
+        TextWriter? debug = null)
     {
         var display = pathText.Trim();
         var full = Path.GetFullPath(Path.IsPathRooted(display) ? display : Path.Combine(sourceDirectory, display));
@@ -65,7 +66,7 @@ internal static class ScriptCalls
         }
 
         return kind == "writ"
-            ? ResolveWrit(full, display, sourceFile, diagnostics, span, semanticResolver, capabilities, model, cmdlets)
+            ? ResolveWrit(full, display, sourceFile, diagnostics, span, semanticResolver, capabilities, model, cmdlets, debug)
             : ResolvePowerShell(full);
     }
 
@@ -78,7 +79,8 @@ internal static class ScriptCalls
         ISemanticResolver semanticResolver,
         ICapabilityLoader capabilities,
         ILanguageModel model,
-        CmdletCatalog cmdlets)
+        CmdletCatalog cmdlets,
+        TextWriter? debug)
     {
         if (ScriptCompileStack.Contains(full))
         {
@@ -87,7 +89,10 @@ internal static class ScriptCalls
         }
 
         var pipeline = new CompilationPipeline(semanticResolver, capabilities, model, cmdlets);
-        var result = pipeline.Compile(File.ReadAllText(full), full);
+        var result = pipeline.Compile(
+            File.ReadAllText(full),
+            full,
+            model: debug is null ? null : new ModelOptions { Debug = debug });
         if (!result.Success || result.Ir is null || result.GeneratedPowerShell is null)
         {
             var cycle = result.Diagnostics.Any(d => d.Code == "E4012");

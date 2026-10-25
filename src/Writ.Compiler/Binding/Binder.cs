@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Writ.Compiler.Capabilities;
 using Writ.Compiler.Diagnostics;
@@ -22,6 +23,7 @@ public sealed class Binder
     private readonly List<IrTypeDecl> _capabilityTypes = [];
     private readonly HashSet<EffectKind> _grantedEffects = [];
     private readonly CmdletCatalog _cmdlets;
+    private readonly TextWriter? _debug;
 
     /// <summary>Capabilities discovered while binding, in declaration order. Used by lockfiles and `writ tools`.</summary>
     public IReadOnlyList<LoadedCapability> Capabilities => _loadedCapabilities.Values.ToList();
@@ -35,7 +37,8 @@ public sealed class Binder
         ISemanticResolver? semanticResolver = null,
         ICapabilityLoader? capabilities = null,
         ILanguageModel? model = null,
-        CmdletCatalog? cmdlets = null)
+        CmdletCatalog? cmdlets = null,
+        TextWriter? debug = null)
     {
         _filePath = filePath;
         _diagnostics = diagnostics;
@@ -43,6 +46,7 @@ public sealed class Binder
         _capabilities = capabilities ?? new FileCapabilityLoader();
         _model = model ?? new InnateLanguageModel();
         _cmdlets = cmdlets ?? CmdletCatalog.Default;
+        _debug = debug;
         _proposalLowerer = new IntentProposalLowerer(filePath, diagnostics);
     }
 
@@ -236,6 +240,11 @@ public sealed class Binder
 
         if (reading.Selections.Count == 0)
         {
+            if (_debug is not null)
+            {
+                ModelDebug.WriteOutcome(_debug, reading.FailureReason is null ? "no match" : "unresolved");
+            }
+
             if (reading.FailureReason is null)
             {
                 return null;
@@ -246,6 +255,11 @@ public sealed class Binder
         }
 
         var accepted = ModelReadings.Accept(reading, request, _diagnostics, _filePath, span);
+        if (_debug is not null)
+        {
+            ModelDebug.WriteOutcome(_debug, accepted is null ? "rejected" : "accepted");
+        }
+
         RecordReading(request, accepted, span);
         if (accepted is null)
         {
@@ -420,11 +434,8 @@ public sealed class Binder
             return null;
         }
 
-        if (entry.Effect != EffectKind.Pure && !_grantedEffects.Contains(entry.Effect))
+        if (!EffectGranted(entry.Name, entry.Effect, span))
         {
-            _diagnostics.Error("E4003",
-                $"'{entry.Name}' requires effect '{DescribeEffect(entry.Effect)}', which this program does not allow. Add 'Allow {AllowPhrase(entry.Effect)}'.",
-                _filePath, span);
             return null;
         }
 
@@ -485,6 +496,19 @@ public sealed class Binder
             span,
             entry.Output,
             Provenance.ResolvedByModel);
+    }
+
+    private bool EffectGranted(string commandName, EffectKind effect, SourceSpan span)
+    {
+        if (effect == EffectKind.Pure || _grantedEffects.Contains(effect))
+        {
+            return true;
+        }
+
+        _diagnostics.Error("E4003",
+            $"'{commandName}' requires effect '{DescribeEffect(effect)}', which this program does not allow. Add 'Allow {AllowPhrase(effect)}'.",
+            _filePath, span);
+        return false;
     }
 
     private static string AllowPhrase(EffectKind effect) => effect switch
@@ -613,10 +637,20 @@ public sealed class Binder
 
         if (reading.Selections.Count == 0)
         {
+            if (_debug is not null)
+            {
+                ModelDebug.WriteOutcome(_debug, "no match");
+            }
+
             return [];
         }
 
         var accepted = ModelReadings.Accept(reading, request, _diagnostics, _filePath, span);
+        if (_debug is not null)
+        {
+            ModelDebug.WriteOutcome(_debug, accepted is null ? "rejected" : "accepted");
+        }
+
         RecordReading(request, accepted, span);
         return accepted;
     }
@@ -646,12 +680,29 @@ public sealed class Binder
 
     private ModelReading? Read(ModelRequest request, SourceSpan span)
     {
+        if (_debug is not null)
+        {
+            ModelDebug.WriteCall(_debug, _filePath, span, request);
+        }
+
+        var watch = Stopwatch.StartNew();
         try
         {
-            return _model.ReadAsync(request).GetAwaiter().GetResult();
+            var reading = _model.ReadAsync(request).GetAwaiter().GetResult();
+            if (_debug is not null)
+            {
+                ModelDebug.WriteReading(_debug, reading, watch.Elapsed);
+            }
+
+            return reading;
         }
         catch (Exception ex)
         {
+            if (_debug is not null)
+            {
+                ModelDebug.WriteFailure(_debug, ex, watch.Elapsed);
+            }
+
             _diagnostics.Error("E2106", $"Language model failed: {ex.Message}", _filePath, span);
             return null;
         }
@@ -821,7 +872,8 @@ public sealed class Binder
             _semanticResolver,
             _capabilities,
             _model,
-            _cmdlets);
+            _cmdlets,
+            _debug);
         if (resolved is null)
         {
             return new IrLiteral(null, expr.Span, IrErrorType.Instance);
@@ -1228,6 +1280,17 @@ public sealed class Binder
             return new IrLiteral(null, intent.Span, IrErrorType.Instance, Provenance.ResolvedByModel);
         }
 
+        if (_debug is not null)
+        {
+            var outcome = resolution.Candidates.Count switch
+            {
+                0 => "no rule match",
+                1 => $"rule match: {resolution.Candidates[0].Rationale}",
+                _ => $"{resolution.Candidates.Count} rule matches; not sent to the model"
+            };
+            ModelDebug.WriteRule(_debug, _filePath, intent.Span, intent.Phrase, outcome);
+        }
+
         if (resolution.Candidates.Count == 0)
         {
             var implied = BindImpliedOperation(intent.Phrase, intent.Span, scope);
@@ -1490,9 +1553,228 @@ public sealed class Binder
         return BindFieldAccessOn(target, expr.Name, expr.Span);
     }
 
+    private IrNode BindHostCommand(CallExprAst call, List<IrNode> args)
+    {
+        var kind = call.Name["writ.host.".Length..];
+        switch (kind)
+        {
+            case "clear":
+                return HostCommand(call, "Clear-Host", IrVoidType.Instance, EffectKind.Pure);
+            case "sleep":
+            case "sleepmin":
+            case "sleephour":
+            case "sleepms":
+                return BindSleep(call, args, kind);
+            case "stop":
+                return One(call, args, "stop with", "throw", IrVoidType.Instance, EffectKind.Pure, "Message");
+            case "warn":
+                return One(call, args, "warn", "Write-Warning", IrVoidType.Instance, EffectKind.Pure, "Message");
+            case "note":
+                return One(call, args, "note", "Write-Verbose", IrVoidType.Instance, EffectKind.Pure, "Message");
+            case "go":
+                return One(call, args, "go to", "Set-Location", IrVoidType.Instance, EffectKind.Pure, "Path", IrPrimitiveType.String);
+            case "read":
+                return One(call, args, "read", "Read-Host", IrPrimitiveType.String, EffectKind.Pure, "Prompt");
+            case "parent":
+                return One(call, args, "the parent folder of", "Split-Path", IrPrimitiveType.String, EffectKind.Pure, "Path", IrPrimitiveType.String, Switch(call, "Parent"));
+            case "leaf":
+                return One(call, args, "the file name of", "Split-Path", IrPrimitiveType.String, EffectKind.Pure, "Path", IrPrimitiveType.String, Switch(call, "Leaf"));
+            case "resolve":
+                return One(call, args, "the full path of", "Resolve-Path", IrDynamicType.Instance, EffectKind.FileSystemRead, "Path", IrPrimitiveType.String);
+            case "join":
+                if (!ExpectCount(call, args, 2, "the combined path of"))
+                {
+                    return new IrLiteral(null, call.Span, IrErrorType.Instance, Provenance.Deterministic);
+                }
+
+                ExpectKind(args[0], IrPrimitiveType.String, "Join-Path", "Path", call.Span);
+                ExpectKind(args[1], IrPrimitiveType.String, "Join-Path", "ChildPath", call.Span);
+                return HostCommand(
+                    call,
+                    "Join-Path",
+                    IrPrimitiveType.String,
+                    EffectKind.Pure,
+                    Arg("Path", args[0]),
+                    Arg("ChildPath", args[1]));
+            case "add":
+            case "write":
+                return BindFilePair(call, args, kind == "add" ? "Add-Content" : "Set-Content", valueThenPath: true);
+            case "copy":
+            case "move":
+                return BindFilePair(call, args, kind == "copy" ? "Copy-Item" : "Move-Item", valueThenPath: false);
+            case "rename":
+                return BindFilePair(call, args, "Rename-Item", valueThenPath: false, destination: "NewName");
+            case "remove":
+            case "removeAll":
+                return One(call, args, "remove", "Remove-Item", IrVoidType.Instance, EffectKind.FileSystemWrite, "Path", IrPrimitiveType.String,
+                    kind == "removeAll" ? Switch(call, "Recurse") : null);
+            case "createDir":
+            case "createFile":
+                if (!ExpectCount(call, args, 1, "create"))
+                {
+                    return new IrLiteral(null, call.Span, IrErrorType.Instance, Provenance.Deterministic);
+                }
+
+                ExpectKind(args[0], IrPrimitiveType.String, "New-Item", "Path", call.Span);
+                return HostCommand(
+                    call,
+                    "New-Item",
+                    IrVoidType.Instance,
+                    EffectKind.FileSystemWrite,
+                    Arg("Path", args[0]),
+                    Arg("ItemType", new IrLiteral(kind == "createFile" ? "File" : "Directory", call.Span, IrPrimitiveType.String, Provenance.Deterministic)),
+                    Switch(call, "Force"));
+            case "startProgram":
+                return One(call, args, "start the program", "Start-Process", IrVoidType.Instance, EffectKind.ExternalState, "FilePath", IrPrimitiveType.String);
+            case "stopProcess":
+                return One(call, args, "stop the process", "Stop-Process", IrVoidType.Instance, EffectKind.ExternalState, "Name", IrPrimitiveType.String);
+            case "startService":
+                return One(call, args, "start the service", "Start-Service", IrVoidType.Instance, EffectKind.ExternalState, "Name", IrPrimitiveType.String);
+            case "stopService":
+                return One(call, args, "stop the service", "Stop-Service", IrVoidType.Instance, EffectKind.ExternalState, "Name", IrPrimitiveType.String);
+            case "restartService":
+                return One(call, args, "restart the service", "Restart-Service", IrVoidType.Instance, EffectKind.ExternalState, "Name", IrPrimitiveType.String);
+            default:
+                _diagnostics.Error("E2008", $"Unknown command '{kind}'.", _filePath, call.Span);
+                return new IrLiteral(null, call.Span, IrErrorType.Instance, Provenance.Deterministic);
+        }
+    }
+
+    private IrNode BindSleep(CallExprAst call, List<IrNode> args, string kind)
+    {
+        if (!ExpectCount(call, args, 1, "wait"))
+        {
+            return new IrLiteral(null, call.Span, IrErrorType.Instance, Provenance.Deterministic);
+        }
+
+        if (args[0].Type is not IrPrimitiveType { Name: "integer" } and not IrDynamicType and not IrErrorType)
+        {
+            _diagnostics.Error("E2028", "wait expects a whole number.", _filePath, call.Arguments[0].Span);
+        }
+
+        var factor = kind switch
+        {
+            "sleepmin" => 60L,
+            "sleephour" => 3600L,
+            _ => 1L
+        };
+        var amount = factor == 1
+            ? args[0]
+            : new IrBinary(
+                args[0],
+                "*",
+                new IrLiteral(factor, call.Span, IrPrimitiveType.Integer),
+                call.Span,
+                args[0].Type is IrDynamicType ? IrDynamicType.Instance : IrPrimitiveType.Integer);
+        return HostCommand(
+            call,
+            "Start-Sleep",
+            IrVoidType.Instance,
+            EffectKind.Pure,
+            Arg(kind == "sleepms" ? "Milliseconds" : "Seconds", amount));
+    }
+
+    private IrNode BindFilePair(CallExprAst call, List<IrNode> args, string command, bool valueThenPath, string destination = "Destination")
+    {
+        if (!ExpectCount(call, args, 2, command))
+        {
+            return new IrLiteral(null, call.Span, IrErrorType.Instance, Provenance.Deterministic);
+        }
+
+        var path = valueThenPath ? args[1] : args[0];
+        var other = valueThenPath ? args[0] : args[1];
+        var otherName = command is "Add-Content" or "Set-Content" ? "Value" : destination;
+        ExpectKind(path, IrPrimitiveType.String, command, "Path", call.Span);
+        ExpectKind(other, IrPrimitiveType.String, command, otherName, call.Span);
+        return HostCommand(
+            call,
+            command,
+            IrVoidType.Instance,
+            EffectKind.FileSystemWrite,
+            Arg("Path", path),
+            Arg(otherName, other));
+    }
+
+    private IrNode One(
+        CallExprAst call,
+        List<IrNode> args,
+        string sentence,
+        string command,
+        IrType type,
+        EffectKind effect,
+        string parameter,
+        IrType? expected = null,
+        IrNamedArgument? extra = null)
+    {
+        if (!ExpectCount(call, args, 1, sentence))
+        {
+            return new IrLiteral(null, call.Span, IrErrorType.Instance, Provenance.Deterministic);
+        }
+
+        if (expected is not null)
+        {
+            ExpectKind(args[0], expected, command, parameter, call.Span);
+        }
+
+        var arguments = extra is null
+            ? new[] { Arg(parameter, args[0]) }
+            : new[] { Arg(parameter, args[0]), extra };
+        return HostCommand(call, command, type, effect, arguments);
+    }
+
+    private bool ExpectCount(CallExprAst call, List<IrNode> args, int expected, string sentence)
+    {
+        if (args.Count == expected)
+        {
+            return true;
+        }
+
+        _diagnostics.Error("E2009", $"'{sentence}' expects {expected} value(s).", _filePath, call.Span);
+        return false;
+    }
+
+    private void ExpectKind(IrNode value, IrType expected, string command, string parameter, SourceSpan span)
+    {
+        if (value.Type is IrErrorType || TypesCompatible(expected, value.Type))
+        {
+            return;
+        }
+
+        _diagnostics.Error("E4005",
+            $"'{command}' parameter '{parameter}' expects '{Describe(expected)}', got '{Describe(value.Type)}'.",
+            _filePath, span);
+    }
+
+    private IrNode HostCommand(CallExprAst call, string name, IrType type, EffectKind effect, params IrNamedArgument[] arguments)
+    {
+        if (!EffectGranted(name, effect, call.Span))
+        {
+            return new IrLiteral(null, call.Span, IrErrorType.Instance, Provenance.Deterministic);
+        }
+
+        return new IrCommand(
+            name,
+            arguments,
+            [effect],
+            $"pwsh:{name}@{_cmdlets.Hash}",
+            call.Span,
+            type,
+            Provenance.Deterministic);
+    }
+
+    private static IrNamedArgument Arg(string name, IrNode value) => new(name, value);
+
+    private static IrNamedArgument Switch(CallExprAst call, string name) =>
+        new(name, new IrLiteral(true, call.Span, IrPrimitiveType.Boolean, Provenance.Deterministic));
+
     private IrNode BindCall(CallExprAst call, Scope scope)
     {
         var args = call.Arguments.Select(a => BindExpression(a, scope)).ToList();
+        if (call.Name.StartsWith("writ.host.", StringComparison.Ordinal))
+        {
+            return BindHostCommand(call, args);
+        }
+
         if (!_functions.TryGetValue(call.Name, out var sig))
         {
             _diagnostics.Error("E2008", $"Unknown function '{call.Name}'.", _filePath, call.Span);

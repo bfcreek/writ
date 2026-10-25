@@ -15,11 +15,11 @@ public class EndToEndTests
         var result = pipeline.Compile(source, path);
 
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.False(string.IsNullOrWhiteSpace(result.GeneratedCSharp));
-        Assert.Contains("CalculateTotal", result.GeneratedCSharp!);
+        Assert.False(string.IsNullOrWhiteSpace(result.GeneratedPowerShell));
+        Assert.Contains("CalculateTotal", result.GeneratedPowerShell!);
 
         var input = File.ReadAllText(SamplePath("input-calculate-total.json"));
-        var exec = new RoslynExecutor().Execute(result.GeneratedCSharp!, "calculate-total", "CalculateTotal", input);
+        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "calculate-total", "CalculateTotal", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(27.54m, Assert.IsType<decimal>(exec.Value));
     }
@@ -33,7 +33,7 @@ public class EndToEndTests
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
         var input = File.ReadAllText(SamplePath("input-fizzbuzz.json"));
-        var exec = new RoslynExecutor().Execute(result.GeneratedCSharp!, "fizzbuzz-loop", "ClassifyAll", input);
+        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "fizzbuzz-loop", "ClassifyAll", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
 
         var list = Assert.IsAssignableFrom<System.Collections.IList>(exec.Value);
@@ -62,10 +62,10 @@ public class EndToEndTests
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
-        var cs = result.GeneratedCSharp!;
-        Assert.Contains("public static class fizzbuzzModule", cs);
-        Assert.Contains("public static string FizzBuzz(long n)", cs);
-        Assert.Contains("Builtins.Str(", cs);
+        var script = result.GeneratedPowerShell!;
+        Assert.Contains("function FizzBuzz {", script);
+        Assert.Contains("param([long]$n)", script);
+        Assert.Contains("'FizzBuzz'", script);
     }
 
     private static string SamplePath(string relative) =>

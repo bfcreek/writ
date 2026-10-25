@@ -160,6 +160,33 @@ public class ModelSetupTests
     }
 
     [Fact]
+    public void Debug_trace_shows_the_chat_exchange_and_hides_the_key()
+    {
+        var writer = new StringWriter();
+        var source = """
+            An Item has price
+
+            To Show, given item which is an Item, returning a decimal
+                return the price of the item
+            """;
+        var result = Compile("""{ "provider": "openai", "model": "gpt-4.1-mini" }""", source, new ModelOptions
+        {
+            Handler = new StubHandler(_ => Reading("""{"id":"decimal","subject":"price","bindings":{},"rationale":"money","order":0}""")),
+            ReadEnvironment = name => name == "OPENAI_API_KEY" ? "sk-debug-secret" : null,
+            Debug = writer
+        });
+
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        var trace = writer.ToString();
+        Assert.Contains("debug: using openai gpt-4.1-mini", trace);
+        Assert.Contains("https://api.openai.com/v1/chat/completions", trace);
+        Assert.Contains("Item has price", trace);
+        Assert.Contains("money", trace);
+        Assert.Contains("accepted", trace);
+        Assert.DoesNotContain("sk-debug-secret", trace);
+    }
+
+    [Fact]
     public void A_model_that_returns_prose_or_an_error_fails_the_reading()
     {
         var prose = Compile("""{ "provider": "ollama", "model": "qwen" }""", Priced, new ModelOptions

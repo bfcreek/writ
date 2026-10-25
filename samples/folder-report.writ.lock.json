@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "sourceHash": "sha256:0e3de2a087d2c588da53f0bac2f377e168d10b9690b7f4957e938d3afd279477",
+  "compilerVersion": "1.0.0",
+  "irSchema": "0.6.0",
+  "cmdletCatalogHash": "sha256:1efe28be84850bea21b4c5eda3ceda0945c8438a89553506f8649209dfb21c91",
+  "capabilities": {},
+  "readings": [
+    {
+      "where": "4:19",
+      "text": "the items in the folder , files only",
+      "selections": [
+        "0:pwsh.Get-ChildItem(the items in the folder , files only){File=true,Path=folder}"
+      ]
+    }
+  ],
+  "emission": "powershell-script"
+}

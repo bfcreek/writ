@@ -86,7 +86,15 @@ public sealed class CompilationPipeline
             return Finish(new CompilationResult(false, diagnostics.Items, ast, null, null));
         }
 
-        var binder = new Binder(filePath, diagnostics, _semanticResolver, _capabilities, languageModel, _cmdlets);
+        if (model?.Debug is not null && choice is not null)
+        {
+            var named = string.IsNullOrEmpty(choice.Model) ? choice.Provider : $"{choice.Provider} {choice.Model}";
+            var profile = string.IsNullOrEmpty(choice.Profile) ? "" : $" ({choice.Profile})";
+            var from = choice.Source == "built-in" ? "built-in" : Path.GetFileName(choice.Source);
+            model.Debug.WriteLine($"debug: using {named}{profile} from {from}");
+        }
+
+        var binder = new Binder(filePath, diagnostics, _semanticResolver, _capabilities, languageModel, _cmdlets, model?.Debug);
         var ir = binder.Bind(ast, name);
         if (diagnostics.HasErrors)
         {
@@ -106,9 +114,8 @@ public sealed class CompilationPipeline
             return Finish(new CompilationResult(false, diagnostics.Items, ast, ir, null), binder);
         }
 
-        var csharp = new CSharpGenerator().Generate(ir, filePath);
         var powershell = new PowerShellGenerator().Generate(ir, filePath);
-        return Finish(new CompilationResult(true, diagnostics.Items, ast, ir, csharp, powershell), binder) with
+        return Finish(new CompilationResult(true, diagnostics.Items, ast, ir, powershell), binder) with
         {
             Emission = decision
         };
@@ -160,7 +167,7 @@ public sealed class CompilationPipeline
             {
                 if (declaration is FunctionAst { IsEntry: true })
                 {
-                    diagnostics.Error("E1108", $"\"{include.Path}\" has its own 'When run' block; only the main file may have one.", filePath, include.Span);
+                    diagnostics.Error("E1108", $"\"{include.Path}\" says what to do when it runs; only the main file may do that.", filePath, include.Span);
                     continue;
                 }
 

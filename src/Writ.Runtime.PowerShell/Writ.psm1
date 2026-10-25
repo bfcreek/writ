@@ -96,6 +96,7 @@ function Write-IntentCallLog {
 $script:IntentMcpSessions = @{}
 $script:IntentMcpRestSessions = @{}
 $script:IntentMcpRestNextId = 2
+$script:IntentMcpValidated = @{}
 
 function Split-IntentCommandLine([string]$CommandLine) {
     $trimmed = $CommandLine.Trim()
@@ -273,6 +274,83 @@ function Invoke-WritMcpRest {
     }
 }
 
+# Names offered by one server. tools/list is the only method this sends.
+function Get-IntentMcpToolNames {
+    param([string]$Transport, [string]$Endpoint, [string]$WorkingDirectory)
+    if ($Transport -eq 'rest') {
+        $sessionId = Get-IntentMcpRestSession -Url $Endpoint
+        $id = $script:IntentMcpRestNextId
+        $script:IntentMcpRestNextId = $id + 1
+        $listed = Send-IntentMcpRest -Url $Endpoint -SessionId $sessionId -Message @{
+            jsonrpc = '2.0'; id = $id; method = 'tools/list'; params = @{}
+        }
+        Read-IntentMcpToolNames $listed.Result
+        return
+    }
+    $session = Get-IntentMcpSession -CommandLine $Endpoint -WorkingDirectory $WorkingDirectory
+    $id = $session.NextId
+    $session.NextId = $id + 1
+    Send-IntentMcp $session @{ jsonrpc = '2.0'; id = $id; method = 'tools/list'; params = @{} }
+    Read-IntentMcpToolNames (Receive-IntentMcp $session $id)
+}
+
+function Read-IntentMcpToolNames($Result) {
+    $names = [System.Collections.Generic.List[string]]::new()
+    if ($null -eq $Result) { return $names.ToArray() }
+    $tools = $null
+    if ($Result -is [System.Collections.IDictionary]) {
+        if ($Result.Contains('tools')) { $tools = $Result['tools'] }
+    }
+    elseif ($null -ne $Result.PSObject.Properties['tools']) {
+        $tools = $Result.tools
+    }
+    foreach ($tool in @($tools)) {
+        if ($null -eq $tool) { continue }
+        $name = $null
+        if ($tool -is [System.Collections.IDictionary]) {
+            if ($tool.Contains('name')) { $name = [string]$tool['name'] }
+        }
+        elseif ($null -ne $tool.PSObject.Properties['name']) {
+            $name = [string]$tool.name
+        }
+        if ($name) { [void]$names.Add($name) }
+    }
+    return $names.ToArray()
+}
+
+# The script's required tools must still be offered. One tools/list per server, no tools/call.
+function Assert-WritMcpTools {
+    param([string]$RequiredJson)
+    if ([string]::IsNullOrWhiteSpace($RequiredJson) -or $RequiredJson -eq '[]') { return }
+    if ($script:IntentMcpValidated.ContainsKey($RequiredJson)) { return }
+    $required = @(ConvertFrom-Json -InputObject $RequiredJson)
+    $groups = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new([System.StringComparer]::Ordinal)
+    foreach ($tool in $required) {
+        if ($null -eq $tool) { continue }
+        $key = ([string]$tool.transport) + "`n" + ([string]$tool.endpoint) + "`n" + ([string]$tool.workingDirectory)
+        if (-not $groups.ContainsKey($key)) {
+            $groups[$key] = [System.Collections.Generic.List[object]]::new()
+        }
+        [void]$groups[$key].Add($tool)
+    }
+    foreach ($group in $groups.Values) {
+        $first = $group[0]
+        $available = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        foreach ($name in @(Get-IntentMcpToolNames -Transport ([string]$first.transport) -Endpoint ([string]$first.endpoint) -WorkingDirectory ([string]$first.workingDirectory))) {
+            foreach ($part in @($name)) {
+                if ($part -is [string] -and $part) { [void]$available.Add($part) }
+            }
+        }
+        foreach ($tool in $group) {
+            $operation = [string]$tool.operation
+            if (-not $available.Contains($operation)) {
+                throw "Required MCP tool '$([string]$tool.alias).$operation' is not available."
+            }
+        }
+    }
+    $script:IntentMcpValidated[$RequiredJson] = $true
+}
+
 # Hashtables from -AsHashtable become objects so field access reads the same as JSON data.
 function ConvertTo-IntentData($Value) {
     $json = ConvertTo-Json -InputObject $Value -Depth 32 -Compress
@@ -417,6 +495,7 @@ function Invoke-WritCompiledScript {
             'param([string]$ScriptPath, [string]$InputPath)'
             '$ErrorActionPreference = ''Stop'''
             '. $ScriptPath'
+            '__Assert-WritMcpTools'
             '$__raw = Get-Content -LiteralPath $InputPath -Raw'
             '$__input = if ([string]::IsNullOrWhiteSpace($__raw)) { [pscustomobject]@{} } else { $__raw | ConvertFrom-Json }'
             '$__params = @{}'
