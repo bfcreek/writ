@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Writ.Compiler.Capabilities;
@@ -188,6 +189,18 @@ public static class LockFile
 
 public static class CompilerInfo
 {
-    public static string Version { get; } =
-        typeof(CompilerInfo).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    public static string Version { get; } = ReadVersion();
+
+    private static string ReadVersion()
+    {
+        var informational = typeof(CompilerInfo).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            var metadata = informational.IndexOf('+', StringComparison.Ordinal);
+            return metadata >= 0 ? informational[..metadata] : informational;
+        }
+
+        return typeof(CompilerInfo).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    }
 }

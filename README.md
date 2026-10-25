@@ -18,3 +18,7 @@ dotnet run --project src/Writ.Cli -- check samples/errors/retry-a-write.writ
 ```
 
 Compiling a program (`writ compile`) writes `<name>.ps1` beside `Writ.psm1`. The script runs with `pwsh ./<name>.ps1 -param value`. `--target powershell` skips constraint scoring.
+
+## Releases
+
+Push a tag `v1.2.3` or a prerelease tag `v1.2.3-preview.1`. The release workflow tests that commit, then attaches self-contained binaries and a .NET tool package to the GitHub release. `writ version` prints the version stamped into that build.

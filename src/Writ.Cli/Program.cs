@@ -142,6 +142,13 @@ diffCommand.SetAction(parseResult => RunDiff(
     parseResult.GetValue(fileArgument)!,
     parseResult.GetValue(debugOption)));
 
+var versionCommand = new Command("version", "Print the compiler version");
+versionCommand.SetAction(_ =>
+{
+    Console.WriteLine(CompilerInfo.Version);
+    return 0;
+});
+
 var root = new RootCommand("Writ compiler - English source to typed operations")
 {
     checkCommand,
@@ -150,7 +157,8 @@ var root = new RootCommand("Writ compiler - English source to typed operations")
     lockCommand,
     toolsCommand,
     explainCommand,
-    diffCommand
+    diffCommand,
+    versionCommand
 };
 
 return root.Parse(args).Invoke();

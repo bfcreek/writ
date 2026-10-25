@@ -7,7 +7,19 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Writ.Cli</RootNamespace>
     <AssemblyName>writ</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>writ</ToolCommandName>
+    <Authors>bfcreek</Authors>
+    <PackageId>Writ.Cli</PackageId>
+    <Description>English sentences compiled to typed operations and a PowerShell script.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/bfcreek/writ</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Writ.Compiler\Writ.Compiler.csproj" />
