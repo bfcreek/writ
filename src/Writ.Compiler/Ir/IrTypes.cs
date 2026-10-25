@@ -5,7 +5,7 @@ namespace Writ.Compiler.Ir;
 
 public static class IrVersions
 {
-    public const string SchemaVersion = "0.6.0";
+    public const string SchemaVersion = "0.7.0";
 }
 
 public enum Provenance
@@ -56,6 +56,18 @@ public enum EffectKind
 [JsonDerivedType(typeof(IrTry), "try")]
 [JsonDerivedType(typeof(IrRetry), "retry")]
 [JsonDerivedType(typeof(IrScriptCall), "scriptCall")]
+[JsonDerivedType(typeof(IrBreak), "break")]
+[JsonDerivedType(typeof(IrContinue), "continue")]
+[JsonDerivedType(typeof(IrExit), "exit")]
+[JsonDerivedType(typeof(IrLabel), "label")]
+[JsonDerivedType(typeof(IrDo), "do")]
+[JsonDerivedType(typeof(IrFor), "for")]
+[JsonDerivedType(typeof(IrSwitch), "switch")]
+[JsonDerivedType(typeof(IrTrap), "trap")]
+[JsonDerivedType(typeof(IrData), "data")]
+[JsonDerivedType(typeof(IrSection), "section")]
+[JsonDerivedType(typeof(IrRedirect), "redirect")]
+[JsonDerivedType(typeof(IrDotSource), "dotSource")]
 public abstract record IrNode(
     SourceSpan Span,
     IrType Type,
@@ -68,14 +80,25 @@ public sealed record IrModule(
     IReadOnlyList<IrFunction> Functions,
     SourceSpan Span,
     IrType Type,
-    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance)
+{
+    public IReadOnlyList<IrUsing> Usings { get; init; } = [];
+    public IReadOnlyList<string> Exports { get; init; } = [];
+}
+
+/// <summary>"using the namespace …" or "using the module …".</summary>
+public sealed record IrUsing(string Kind, string Name);
 
 public sealed record IrTypeDecl(
     string Name,
     IReadOnlyList<IrField> Fields,
     SourceSpan Span,
     IrType Type,
-    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance)
+{
+    public IReadOnlyList<string> EnumMembers { get; init; } = [];
+    public IReadOnlyList<IrFunction> Methods { get; init; } = [];
+}
 
 public sealed record IrField(string Name, IrType Type);
 
@@ -93,9 +116,33 @@ public sealed record IrFunction(
 
     /// <summary>Set when the function came from an "Also use" file.</summary>
     public string? SourceFile { get; init; }
+
+    public bool IsFilter { get; init; }
+    public bool CmdletBinding { get; init; }
+    public bool IsMethod { get; init; }
 }
 
-public sealed record IrParameter(string Name, IrType Type);
+public sealed record IrParameter(string Name, IrType Type)
+{
+    public IrNode? Default { get; init; }
+    public bool FromPipeline { get; init; }
+    public string? Alias { get; init; }
+    public IReadOnlyList<string>? OneOf { get; init; }
+    public string? Pattern { get; init; }
+    public long? Min { get; init; }
+    public long? Max { get; init; }
+    public long? MinLength { get; init; }
+    public long? MaxLength { get; init; }
+    public long? MinCount { get; init; }
+    public long? MaxCount { get; init; }
+    public bool AllowNull { get; init; }
+    public bool AllowEmptyString { get; init; }
+    public bool AllowEmptyCollection { get; init; }
+    public bool SupportsWildcards { get; init; }
+    public bool RejectNull { get; init; }
+    public bool RejectEmpty { get; init; }
+    public IrNode? ValidateTest { get; init; }
+}
 
 public sealed record IrAssign(
     string Name,
@@ -103,7 +150,12 @@ public sealed record IrAssign(
     bool IsDeclaration,
     SourceSpan Span,
     IrType Type,
-    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance)
+{
+    public string? Scope { get; init; }
+    public string Operator { get; init; } = "=";
+    public string? Option { get; init; }
+}
 
 public sealed record IrIf(
     IrNode Condition,
@@ -137,7 +189,10 @@ public sealed record IrVar(
     string Name,
     SourceSpan Span,
     IrType Type,
-    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance)
+{
+    public string? Scope { get; init; }
+}
 
 public sealed record IrCall(
     string Callee,
@@ -153,7 +208,10 @@ public sealed record IrFieldAccess(
     string FieldName,
     SourceSpan Span,
     IrType Type,
-    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance)
+{
+    public bool Optional { get; init; }
+}
 
 public sealed record IrListLiteral(
     IReadOnlyList<IrNode> Elements,
@@ -308,6 +366,92 @@ public sealed record IrScriptCall(
 }
 
 /// <summary>A bound PowerShell command (cmdlet) from the pinned catalog. Compilation never runs it.</summary>
+public sealed record IrBreak(
+    string? Label,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrContinue(
+    string? Label,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrExit(
+    IrNode? Code,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrLabel(
+    string Name,
+    IrNode Statement,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrDo(
+    IrNode Condition,
+    IReadOnlyList<IrNode> Body,
+    bool Until,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrFor(
+    string Name,
+    IrNode From,
+    IrNode To,
+    IReadOnlyList<IrNode> Body,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrSwitchArm(IReadOnlyList<IrNode> Values, IReadOnlyList<IrNode> Body);
+
+public sealed record IrSwitch(
+    IrNode Value,
+    IReadOnlyList<IrSwitchArm> Arms,
+    IReadOnlyList<IrNode>? Otherwise,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrTrap(
+    IReadOnlyList<IrNode> Body,
+    string ErrorName,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrData(
+    IReadOnlyList<IrNode> Body,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrSection(
+    string Name,
+    IReadOnlyList<IrNode> Body,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrRedirect(
+    string Operator,
+    IrNode Command,
+    IrNode? Target,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+public sealed record IrDotSource(
+    IrNode Path,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
 public sealed record IrCommand(
     string Name,
     IReadOnlyList<IrNamedArgument> Arguments,
@@ -338,6 +482,15 @@ public sealed record IrPrimitiveType(string Name) : IrType
     public static readonly IrPrimitiveType Decimal = new("decimal");
     public static readonly IrPrimitiveType String = new("string");
     public static readonly IrPrimitiveType Boolean = new("boolean");
+    public static readonly IrPrimitiveType Null = new("null");
+    public static readonly IrPrimitiveType Character = new("character");
+    public static readonly IrPrimitiveType Float = new("float");
+    public static readonly IrPrimitiveType Table = new("table");
+    public static readonly IrPrimitiveType Pattern = new("pattern");
+    public static readonly IrPrimitiveType Xml = new("xml");
+    public static readonly IrPrimitiveType Block = new("block");
+    public static readonly IrPrimitiveType Object = new("object");
+    public static readonly IrPrimitiveType Switch = new("switch");
 }
 
 public sealed record IrListType(IrType ElementType) : IrType;

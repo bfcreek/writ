@@ -150,6 +150,54 @@ public sealed class Validator
                     ValidateEffects([loop.Condition]);
                     ValidateEffects(loop.Body);
                     break;
+                case IrDo repeat:
+                    ValidateEffects([repeat.Condition]);
+                    ValidateEffects(repeat.Body);
+                    break;
+                case IrFor loop:
+                    ValidateEffects([loop.From, loop.To]);
+                    ValidateEffects(loop.Body);
+                    break;
+                case IrSwitch branch:
+                    ValidateEffects([branch.Value]);
+                    foreach (var arm in branch.Arms)
+                    {
+                        ValidateEffects(arm.Values);
+                        ValidateEffects(arm.Body);
+                    }
+
+                    if (branch.Otherwise is not null)
+                    {
+                        ValidateEffects(branch.Otherwise);
+                    }
+
+                    break;
+                case IrTrap trap:
+                    ValidateEffects(trap.Body);
+                    break;
+                case IrData data:
+                    ValidateEffects(data.Body);
+                    break;
+                case IrSection section:
+                    ValidateEffects(section.Body);
+                    break;
+                case IrLabel label:
+                    ValidateEffects([label.Statement]);
+                    break;
+                case IrExit exit when exit.Code is not null:
+                    ValidateEffects([exit.Code]);
+                    break;
+                case IrRedirect redirect:
+                    ValidateEffects([redirect.Command]);
+                    if (redirect.Target is not null)
+                    {
+                        ValidateEffects([redirect.Target]);
+                    }
+
+                    break;
+                case IrDotSource sourced:
+                    ValidateEffects([sourced.Path]);
+                    break;
                 case IrTry tryNode:
                     ValidateEffects(tryNode.Body);
                     if (tryNode.OnFailure is not null)

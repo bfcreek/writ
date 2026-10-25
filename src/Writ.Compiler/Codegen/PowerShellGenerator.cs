@@ -8,7 +8,7 @@ namespace Writ.Compiler.Codegen;
 /// <summary>
 /// Emits a runnable PowerShell 7 script from the IR. Same IR, same semantics as the C# backend.
 /// </summary>
-public sealed class PowerShellGenerator
+public sealed partial class PowerShellGenerator
 {
     private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -68,13 +68,18 @@ public sealed class PowerShellGenerator
         }
 
         sb.AppendLine("#Requires -Version 7");
+        foreach (var used in module.Usings)
+        {
+            sb.AppendLine(used.Kind == "module" ? $"using module {used.Name}" : $"using namespace {used.Name}");
+        }
+
         // -ListTools is on every script, including ones with no "When run" block.
         sb.AppendLine("[CmdletBinding()]");
         sb.Append("param(");
         var parameters = new List<string>();
         if (entry is not null)
         {
-            parameters.AddRange(entry.Parameters.Select(p => $"{TypeAttribute(p.Type)}${Var(p.Name)}"));
+            parameters.AddRange(entry.Parameters.Select(FormatParameter));
         }
 
         parameters.Add($"[switch]${listTools}");
@@ -134,6 +139,13 @@ public sealed class PowerShellGenerator
         }
 
         sb.AppendLine("}");
+
+        if (module.Exports.Count > 0)
+        {
+            sb.AppendLine("if ($MyInvocation.MyCommand.ScriptBlock.Module) {");
+            sb.AppendLine($"    Export-ModuleMember -Function {string.Join(", ", module.Exports.Select(name => Quote(Sanitize(name))))}");
+            sb.AppendLine("}");
+        }
 
         return sb.ToString();
     }
@@ -305,6 +317,51 @@ public sealed class PowerShellGenerator
                 case IrCommand command:
                     foreach (var argument in command.Arguments) Walk(argument.Value);
                     break;
+                case IrExit exit when exit.Code is not null:
+                    Walk(exit.Code);
+                    break;
+                case IrLabel label:
+                    Walk(label.Statement);
+                    break;
+                case IrDo repeat:
+                    Walk(repeat.Condition);
+                    foreach (var step in repeat.Body) Walk(step);
+                    break;
+                case IrFor loop:
+                    Walk(loop.From);
+                    Walk(loop.To);
+                    foreach (var step in loop.Body) Walk(step);
+                    break;
+                case IrSwitch branch:
+                    Walk(branch.Value);
+                    foreach (var arm in branch.Arms)
+                    {
+                        foreach (var value in arm.Values) Walk(value);
+                        foreach (var step in arm.Body) Walk(step);
+                    }
+
+                    if (branch.Otherwise is not null)
+                    {
+                        foreach (var step in branch.Otherwise) Walk(step);
+                    }
+
+                    break;
+                case IrTrap trap:
+                    foreach (var step in trap.Body) Walk(step);
+                    break;
+                case IrData data:
+                    foreach (var step in data.Body) Walk(step);
+                    break;
+                case IrSection section:
+                    foreach (var step in section.Body) Walk(step);
+                    break;
+                case IrRedirect redirect:
+                    Walk(redirect.Command);
+                    if (redirect.Target is not null) Walk(redirect.Target);
+                    break;
+                case IrDotSource sourced:
+                    Walk(sourced.Path);
+                    break;
             }
         }
     }
@@ -367,11 +424,28 @@ public sealed class PowerShellGenerator
 
     private void EmitType(StringBuilder sb, IrTypeDecl type)
     {
+        if (type.EnumMembers.Count > 0)
+        {
+            sb.AppendLine($"enum {Sanitize(type.Name)} {{");
+            foreach (var member in type.EnumMembers)
+            {
+                sb.AppendLine($"    {Sanitize(member)}");
+            }
+
+            sb.AppendLine("}");
+            return;
+        }
+
         var name = Sanitize(type.Name);
         sb.AppendLine($"class {name} {{");
         foreach (var field in type.Fields)
         {
             sb.AppendLine($"    {TypeAttribute(field.Type)}${Sanitize(field.Name)}");
+        }
+
+        foreach (var method in type.Methods)
+        {
+            EmitMethod(sb, method);
         }
 
         sb.AppendLine($"    static [{name}] FromObject($o) {{");
@@ -396,15 +470,12 @@ public sealed class PowerShellGenerator
             sb.AppendLine($"# .writ:{function.Span.StartLine}");
         }
 
-        sb.AppendLine($"function {Sanitize(function.Name)} {{");
+        sb.AppendLine($"{(function.IsFilter ? "filter" : "function")} {Sanitize(function.Name)} {{");
+        EmitFunctionAttributes(sb, function, "    ");
         sb.Append("    param(");
-        sb.Append(string.Join(", ", function.Parameters.Select(p => $"{TypeAttribute(p.Type)}${Var(p.Name)}")));
+        sb.Append(string.Join(", ", function.Parameters.Select(FormatParameter)));
         sb.AppendLine(")");
-        foreach (var stmt in function.Body)
-        {
-            EmitStatement(sb, stmt, 1, sourcePath);
-        }
-
+        EmitFunctionBody(sb, function, 1, sourcePath);
         sb.AppendLine("}");
     }
 
@@ -439,17 +510,7 @@ public sealed class PowerShellGenerator
                     sb.AppendLine($"{pad}# .writ:{assign.Span.StartLine}");
                 }
 
-                sb.Append($"{pad}${Var(assign.Name)} = ");
-                if (assign.Value is IrListLiteral { Elements.Count: 0 } && assign.Type is IrListType listType)
-                {
-                    sb.Append($"[{ListTypeName(listType)}]::new()");
-                }
-                else
-                {
-                    sb.Append(Expression(assign.Value));
-                }
-
-                sb.AppendLine();
+                EmitAssignment(sb, assign, pad);
                 break;
 
             case IrIf iff:
@@ -539,6 +600,100 @@ public sealed class PowerShellGenerator
                 sb.AppendLine($"{pad}}}");
                 break;
 
+            case IrBreak stop:
+                sb.AppendLine(stop.Label is null ? $"{pad}break" : $"{pad}break {Sanitize(stop.Label)}");
+                break;
+            case IrContinue next:
+                sb.AppendLine(next.Label is null ? $"{pad}continue" : $"{pad}continue {Sanitize(next.Label)}");
+                break;
+            case IrExit exit:
+                sb.AppendLine(exit.Code is null ? $"{pad}exit" : $"{pad}exit {Expression(exit.Code)}");
+                break;
+            case IrLabel label:
+                sb.AppendLine($"{pad}:{Sanitize(label.Name)}");
+                EmitStatement(sb, label.Statement, indent, sourcePath);
+                break;
+            case IrDo repeat:
+                sb.AppendLine($"{pad}do {{");
+                foreach (var s in repeat.Body)
+                {
+                    EmitStatement(sb, s, indent + 1, sourcePath);
+                }
+
+                sb.AppendLine($"{pad}}} {(repeat.Until ? "until" : "while")} ({Expression(repeat.Condition)})");
+                break;
+            case IrFor loop:
+                sb.AppendLine($"{pad}for (${Var(loop.Name)} = {Expression(loop.From)}; ${Var(loop.Name)} -le {Expression(loop.To)}; ${Var(loop.Name)}++) {{");
+                foreach (var s in loop.Body)
+                {
+                    EmitStatement(sb, s, indent + 1, sourcePath);
+                }
+
+                sb.AppendLine($"{pad}}}");
+                break;
+            case IrSwitch branch:
+                sb.AppendLine($"{pad}switch ({Expression(branch.Value)}) {{");
+                foreach (var arm in branch.Arms)
+                {
+                    foreach (var value in arm.Values)
+                    {
+                        sb.AppendLine($"{pad}    {Expression(value)} {{");
+                        foreach (var s in arm.Body)
+                        {
+                            EmitStatement(sb, s, indent + 2, sourcePath);
+                        }
+
+                        sb.AppendLine($"{pad}    }}");
+                    }
+                }
+
+                if (branch.Otherwise is not null)
+                {
+                    sb.AppendLine($"{pad}    default {{");
+                    foreach (var s in branch.Otherwise)
+                    {
+                        EmitStatement(sb, s, indent + 2, sourcePath);
+                    }
+
+                    sb.AppendLine($"{pad}    }}");
+                }
+
+                sb.AppendLine($"{pad}}}");
+                break;
+            case IrTrap trap:
+                sb.AppendLine($"{pad}trap {{");
+                sb.AppendLine($"{pad}    ${Var(trap.ErrorName)} = [string]$_.Exception.Message");
+                foreach (var s in trap.Body)
+                {
+                    EmitStatement(sb, s, indent + 1, sourcePath);
+                }
+
+                sb.AppendLine($"{pad}}}");
+                break;
+            case IrData data:
+                sb.AppendLine($"{pad}data {{");
+                foreach (var s in data.Body)
+                {
+                    EmitStatement(sb, s, indent + 1, sourcePath);
+                }
+
+                sb.AppendLine($"{pad}}} | Out-Null");
+                break;
+            case IrSection:
+                break;
+            case IrRedirect redirect:
+                sb.Append($"{pad}{Expression(redirect.Command)} {redirect.Operator}");
+                if (redirect.Target is not null)
+                {
+                    sb.Append($" {Expression(redirect.Target)}");
+                }
+
+                sb.AppendLine();
+                break;
+            case IrDotSource source:
+                sb.AppendLine($"{pad}. {Expression(source.Path)}");
+                break;
+
             default:
                 sb.AppendLine($"{pad}{Expression(node)} | Out-Null");
                 break;
@@ -551,14 +706,25 @@ public sealed class PowerShellGenerator
         {
             case IrLiteral lit:
                 return Literal(lit);
+            case IrVar v when v.Name == "this":
+                return "$this";
+            case IrVar { Name: "pipelineItem" }:
+                return "$_";
+            case IrVar { Name: "arguments" }:
+                return "$args";
+            case IrVar { Name: "errors" }:
+                return "$error";
+            case IrVar { Name: "succeeded" }:
+                return "$?";
             case IrVar v:
-                return $"${Var(v.Name)}";
+                return string.IsNullOrEmpty(v.Scope) ? $"${Var(v.Name)}" : $"${v.Scope}:{Var(v.Name)}";
             case IrCall call:
                 return Call(call);
             case IrFieldAccess field:
+                var dot = field.Optional ? "?." : ".";
                 return field.Target is IrVar
-                    ? $"{Expression(field.Target)}.{Sanitize(field.FieldName)}"
-                    : $"({Expression(field.Target)}).{Sanitize(field.FieldName)}";
+                    ? $"{Expression(field.Target)}{dot}{Sanitize(field.FieldName)}"
+                    : $"({Expression(field.Target)}){dot}{Sanitize(field.FieldName)}";
             case IrListLiteral list:
             {
                 var elementType = list.Type is IrListType lt ? lt.ElementType : IrPrimitiveType.Integer;
@@ -570,6 +736,10 @@ public sealed class PowerShellGenerator
 
                 return $"[{typeName}]@({string.Join(", ", list.Elements.Select(Expression))})";
             }
+            case IrBinary bin when bin.Operator == "+" && bin.Left.Type is IrListType && bin.Right.Type is IrListType:
+                return $"(@({Expression(bin.Left)}) + @({Expression(bin.Right)}))";
+            case IrBinary bin when bin.Operator == "*" && bin.Left.Type is IrListType:
+                return $"(@({Expression(bin.Left)}) * {Expression(bin.Right)})";
             case IrBinary bin:
                 return bin.Operator == "/"
                     ? $"([decimal]{Expression(bin.Left)} / {Expression(bin.Right)})"
@@ -653,6 +823,11 @@ public sealed class PowerShellGenerator
 
     private string Call(IrCall call)
     {
+        if (call.IsBuiltin && EmitConstructCall(call) is { } constructed)
+        {
+            return constructed;
+        }
+
         if (call.IsBuiltin)
         {
             var a = call.Arguments.Select(Expression).ToList();
@@ -682,6 +857,13 @@ public sealed class PowerShellGenerator
         _functions.TryGetValue(call.Callee, out var target);
         for (var i = 0; i < call.Arguments.Count; i++)
         {
+            if (call.Arguments[i] is IrCall { IsBuiltin: true, Callee: "splat" } splat && splat.Arguments.Count == 1)
+            {
+                sb.Append(" @");
+                sb.Append(splat.Arguments[0] is IrVar variable ? Var(variable.Name) : $"({Expression(splat.Arguments[0])})");
+                continue;
+            }
+
             if (target is not null && i < target.Parameters.Count)
             {
                 sb.Append($" -{Var(target.Parameters[i].Name)}");
@@ -773,6 +955,19 @@ public sealed class PowerShellGenerator
         IrPrimitiveType { Name: "decimal" } => "decimal",
         IrPrimitiveType { Name: "string" } => "string",
         IrPrimitiveType { Name: "boolean" } => "bool",
+        IrPrimitiveType { Name: "character" } => "char",
+        IrPrimitiveType { Name: "float" } => "double",
+        IrPrimitiveType { Name: "table" } => "hashtable",
+        IrPrimitiveType { Name: "pattern" } => "regex",
+        IrPrimitiveType { Name: "xml" } => "xml",
+        IrPrimitiveType { Name: "block" } => "scriptblock",
+        IrPrimitiveType { Name: "object" } => "pscustomobject",
+        IrPrimitiveType { Name: "switch" } => "switch",
+        IrPrimitiveType { Name: "null" } => "object",
+        IrPrimitiveType p when p.Name.StartsWith("dictionary:") => DictionaryType(p.Name),
+        IrPrimitiveType p when p.Name.StartsWith("grid:") => GridType(p.Name),
+        IrPrimitiveType p when p.Name.StartsWith("ref:") => "ref",
+        IrPrimitiveType p when p.Name.StartsWith("list:") => "object[]",
         IrListType list => ListTypeName(list),
         IrRecordType record => Sanitize(record.Name),
         _ => "object"

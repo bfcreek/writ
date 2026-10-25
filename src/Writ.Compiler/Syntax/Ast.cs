@@ -38,7 +38,12 @@ public sealed record TakeExprAst(ExprAst Target, ExprAst Count, SourceSpan Span)
 public sealed record TypeDeclAst(
     string Name,
     IReadOnlyList<FieldDeclAst> Fields,
-    SourceSpan Span) : AstNode(Span);
+    SourceSpan Span) : AstNode(Span)
+{
+    public bool IsEnum { get; init; }
+    public IReadOnlyList<string> EnumMembers { get; init; } = [];
+    public IReadOnlyList<FunctionAst> Methods { get; init; } = [];
+}
 
 public sealed record FieldDeclAst(string Name, TypeAst? Type, SourceSpan Span) : AstNode(Span);
 
@@ -49,12 +54,45 @@ public sealed record FunctionAst(
     IReadOnlyList<StmtAst> Body,
     SourceSpan Span,
     bool IsEntry = false,
-    string? SourceFile = null) : AstNode(Span);
+    string? SourceFile = null) : AstNode(Span)
+{
+    /// <summary>"To filter Name" — a PowerShell filter.</summary>
+    public bool IsFilter { get; init; }
+
+    /// <summary>"To command Name" — [CmdletBinding()].</summary>
+    public bool CmdletBinding { get; init; }
+}
 
 /// <summary>"Also use "helpers.writ"" — bring another file's types and functions into this program.</summary>
 public sealed record IncludeDeclAst(string Path, SourceSpan Span) : AstNode(Span);
 
-public sealed record ParameterAst(string Name, TypeAst Type, SourceSpan Span) : AstNode(Span);
+public sealed record ParameterAst(string Name, TypeAst Type, SourceSpan Span) : AstNode(Span)
+{
+    public ExprAst? Default { get; init; }
+    public bool FromPipeline { get; init; }
+    public string? Alias { get; init; }
+    public IReadOnlyList<string>? OneOf { get; init; }
+    public string? Pattern { get; init; }
+    public long? Min { get; init; }
+    public long? Max { get; init; }
+    public long? MinLength { get; init; }
+    public long? MaxLength { get; init; }
+    public long? MinCount { get; init; }
+    public long? MaxCount { get; init; }
+    public bool AllowNull { get; init; }
+    public bool AllowEmptyString { get; init; }
+    public bool AllowEmptyCollection { get; init; }
+    public bool SupportsWildcards { get; init; }
+    public bool RejectNull { get; init; }
+    public bool RejectEmpty { get; init; }
+    public ExprAst? ValidateTest { get; init; }
+}
+
+/// <summary>"using the namespace System.Text" or "using the module "X"".</summary>
+public sealed record UsingDeclAst(string Kind, string Name, SourceSpan Span) : AstNode(Span);
+
+/// <summary>"export the function Greet".</summary>
+public sealed record ExportDeclAst(string Name, SourceSpan Span) : AstNode(Span);
 
 public abstract record TypeAst(SourceSpan Span) : AstNode(Span);
 
@@ -64,7 +102,13 @@ public sealed record ListTypeAst(TypeAst ElementType, SourceSpan Span) : TypeAst
 
 public abstract record StmtAst(SourceSpan Span) : AstNode(Span);
 
-public sealed record AssignStmtAst(string Name, ExprAst Value, SourceSpan Span) : StmtAst(Span);
+public sealed record AssignStmtAst(string Name, ExprAst Value, SourceSpan Span) : StmtAst(Span)
+{
+    public string? Scope { get; init; }
+    public string Operator { get; init; } = "=";
+    /// <summary>"fixed" is ReadOnly, "locked" is Constant.</summary>
+    public string? Option { get; init; }
+}
 
 public sealed record IfStmtAst(
     ExprAst Condition,
@@ -91,7 +135,36 @@ public sealed record OfExprAst(string Name, ExprAst Target, SourceSpan Span) : E
 
 public sealed record CallExprAst(string Name, IReadOnlyList<ExprAst> Arguments, SourceSpan Span) : ExprAst(Span);
 
-public sealed record FieldAccessExprAst(ExprAst Target, string FieldName, SourceSpan Span) : ExprAst(Span);
+public sealed record FieldAccessExprAst(ExprAst Target, string FieldName, SourceSpan Span) : ExprAst(Span)
+{
+    public bool Optional { get; init; }
+}
+
+/// <summary>A flow, loop, switch, trap, data, or section statement from the PowerShell language.</summary>
+public sealed record FlowStmtAst(string Kind, string? Label, ExprAst? Code, SourceSpan Span) : StmtAst(Span);
+
+public sealed record LabeledStmtAst(string Label, StmtAst Statement, SourceSpan Span) : StmtAst(Span);
+
+public sealed record DoStmtAst(IReadOnlyList<StmtAst> Body, ExprAst Condition, bool Until, SourceSpan Span) : StmtAst(Span);
+
+public sealed record ForStmtAst(string Name, ExprAst From, ExprAst To, IReadOnlyList<StmtAst> Body, SourceSpan Span) : StmtAst(Span);
+
+public sealed record SwitchArmAst(IReadOnlyList<ExprAst> Values, IReadOnlyList<StmtAst> Body, SourceSpan Span);
+
+public sealed record SwitchStmtAst(
+    ExprAst Value,
+    IReadOnlyList<SwitchArmAst> Arms,
+    IReadOnlyList<StmtAst>? Otherwise,
+    SourceSpan Span) : StmtAst(Span);
+
+public sealed record BlockStmtAst(string Kind, IReadOnlyList<StmtAst> Body, SourceSpan Span) : StmtAst(Span);
+
+public sealed record RedirectStmtAst(string Operator, ExprAst Command, ExprAst? Target, SourceSpan Span) : StmtAst(Span);
+
+public sealed record ModuleStmtAst(string Kind, string Name, SourceSpan Span) : StmtAst(Span);
+
+/// <summary>An operator or form that is not one of the original arithmetic comparisons.</summary>
+public sealed record ConstructExprAst(string Operator, IReadOnlyList<ExprAst> Arguments, SourceSpan Span) : ExprAst(Span);
 
 public sealed record ListLiteralExprAst(IReadOnlyList<ExprAst> Elements, SourceSpan Span) : ExprAst(Span);
 

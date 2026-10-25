@@ -227,7 +227,9 @@ Constraints live in JSON. The project file is `writ.constraints.json`, next to t
 
 ## Pipeline
 
-English source → sentences → structural AST → includes merged → typed IR (schema 0.6.0) → checks → emission chosen from constraints → PowerShell script → run.
+English source → sentences → structural AST → includes merged → typed IR (schema 0.7.0) → checks → emission chosen from constraints → PowerShell script → run.
+
+The PowerShell language forms Writ accepts, and the ones it leaves out, are listed in [constructs.md](constructs.md).
 
 ## Fail-closed behavior
 

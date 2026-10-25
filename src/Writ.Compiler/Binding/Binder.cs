@@ -8,7 +8,7 @@ using Writ.Compiler.Syntax;
 
 namespace Writ.Compiler.Binding;
 
-public sealed class Binder
+public sealed partial class Binder
 {
     private readonly string? _filePath;
     private readonly DiagnosticBag _diagnostics;
@@ -94,9 +94,7 @@ public sealed class Binder
         // Second pass: function signatures
         foreach (var fn in program.Declarations.OfType<FunctionAst>())
         {
-            var parameters = fn.Parameters
-                .Select(p => new IrParameter(p.Name, ResolveType(p.Type)))
-                .ToList();
+            var parameters = fn.Parameters.Select(ToParameter).ToList();
             var returnType = ResolveType(fn.ReturnType);
             if (!_functions.TryAdd(fn.Name, new FunctionSignature(fn.Name, parameters, returnType, IsBuiltin: false)))
             {
@@ -109,9 +107,13 @@ public sealed class Binder
         var types = program.Declarations.OfType<TypeDeclAst>()
             .Select(t => new IrTypeDecl(
                 t.Name,
-                _records[t.Name].Fields,
+                t.IsEnum ? [] : _records[t.Name].Fields,
                 t.Span,
-                _records[t.Name]))
+                t.IsEnum ? new IrPrimitiveType(t.Name) : _records[t.Name])
+            {
+                EnumMembers = t.EnumMembers,
+                Methods = t.Methods.Select(method => BindMethod(method, _records[t.Name])).ToList()
+            })
             .Concat(_capabilityTypes)
             .ToList();
 
@@ -125,7 +127,11 @@ public sealed class Binder
             types,
             functions,
             program.Span,
-            IrVoidType.Instance);
+            IrVoidType.Instance)
+        {
+            Usings = program.Declarations.OfType<UsingDeclAst>().Select(u => new IrUsing(u.Kind, u.Name)).ToList(),
+            Exports = program.Declarations.OfType<ExportDeclAst>().Select(e => e.Name).ToList()
+        };
     }
 
     private void BindTypeDecl(TypeDeclAst decl)
@@ -133,6 +139,12 @@ public sealed class Binder
         if (_records.ContainsKey(decl.Name))
         {
             _diagnostics.Error("E2002", $"Duplicate type '{decl.Name}'.", _filePath, decl.Span);
+            return;
+        }
+
+        if (decl.IsEnum)
+        {
+            _records[decl.Name] = new IrRecordType(decl.Name, []);
             return;
         }
 
@@ -968,19 +980,7 @@ public sealed class Binder
     private IrFunction BindFunction(FunctionAst fn)
     {
         var sig = _functions[fn.Name];
-        var scope = new Scope(null);
-        foreach (var param in sig.Parameters)
-        {
-            scope.Define(param.Name, param.Type, fn.Span, _diagnostics, _filePath);
-        }
-
-        var body = fn.Body.Select(s => BindStatement(s, scope, sig.ReturnType)).ToList();
-        body = RefineEmptyListDeclarations(body, scope);
-        return new IrFunction(fn.Name, sig.Parameters, sig.ReturnType, body, fn.Span, sig.ReturnType)
-        {
-            IsEntry = fn.IsEntry,
-            SourceFile = fn.SourceFile
-        };
+        return BindFunctionBody(fn, sig);
     }
 
     private static List<IrNode> RefineEmptyListDeclarations(List<IrNode> body, Scope scope)
@@ -1009,6 +1009,17 @@ public sealed class Binder
             {
                 Body = loop.Body.Select(n => RefineNode(n, scope)).ToList()
             },
+            IrDo repeat => repeat with { Body = repeat.Body.Select(n => RefineNode(n, scope)).ToList() },
+            IrFor loop => loop with { Body = loop.Body.Select(n => RefineNode(n, scope)).ToList() },
+            IrSwitch branch => branch with
+            {
+                Arms = branch.Arms.Select(arm => arm with { Body = arm.Body.Select(n => RefineNode(n, scope)).ToList() }).ToList(),
+                Otherwise = branch.Otherwise?.Select(n => RefineNode(n, scope)).ToList()
+            },
+            IrTrap trap => trap with { Body = trap.Body.Select(n => RefineNode(n, scope)).ToList() },
+            IrData data => data with { Body = data.Body.Select(n => RefineNode(n, scope)).ToList() },
+            IrSection section => section with { Body = section.Body.Select(n => RefineNode(n, scope)).ToList() },
+            IrLabel label => label with { Statement = RefineNode(label.Statement, scope) },
             _ => node
         };
 
@@ -1022,6 +1033,14 @@ public sealed class Binder
             SayStmtAst s => new IrSay(s.Parts.Select(p => BindExpression(p, scope)).ToList(), s.Span, IrVoidType.Instance),
             WhileStmtAst w => BindWhile(w, scope, returnType),
             TryStmtAst t => BindTry(t, scope, returnType),
+            FlowStmtAst flow => BindFlow(flow, scope),
+            LabeledStmtAst labeled => BindLabeled(labeled, scope, returnType),
+            DoStmtAst repeat => BindDo(repeat, scope, returnType),
+            ForStmtAst counted => BindCountedFor(counted, scope, returnType),
+            SwitchStmtAst branch => BindSwitch(branch, scope, returnType),
+            BlockStmtAst block => BindBlock(block, scope, returnType),
+            RedirectStmtAst redirect => BindRedirect(redirect, scope),
+            ModuleStmtAst module => BindModuleStatement(module),
             ExpressionStmtAst e => BindExpression(e.Value, scope),
             _ => ErrorNode(stmt.Span, $"Unsupported statement.")
         };
@@ -1056,8 +1075,10 @@ public sealed class Binder
             condition = new IrUnary("not", condition, condition.Span, IrPrimitiveType.Boolean);
         }
 
+        _loopDepth++;
         var bodyScope = new Scope(scope);
         var body = stmt.Body.Select(s => BindStatement(s, bodyScope, returnType)).ToList();
+        _loopDepth--;
         return new IrWhile(condition, body, stmt.Span, IrVoidType.Instance);
     }
 
@@ -1148,17 +1169,21 @@ public sealed class Binder
     private IrAssign BindAssign(AssignStmtAst assign, Scope scope)
     {
         var value = BindExpression(assign.Value, scope);
-        var isDecl = !scope.TryLookup(assign.Name, out _);
-        if (isDecl)
+        var updating = assign.Operator != "=";
+        var isDecl = !updating && !scope.TryLookup(assign.Name, out _);
+        if (updating && !scope.TryLookup(assign.Name, out _))
+        {
+            _diagnostics.Error("E2030", $"'{assign.Name}' has no value to update.", _filePath, assign.Span);
+        }
+        else if (isDecl)
         {
             scope.Define(assign.Name, value.Type, assign.Span, _diagnostics, _filePath);
         }
-        else
+        else if (!updating)
         {
             var existing = scope.Lookup(assign.Name);
             if (existing is IrListType { ElementType: IrErrorType } && value.Type is IrListType refined)
             {
-                // Refine empty-list placeholder to the first concrete element type.
                 scope.Replace(assign.Name, refined);
                 value = value with { Type = refined };
             }
@@ -1170,11 +1195,16 @@ public sealed class Binder
             }
         }
 
-        var assignType = isDecl ? value.Type : scope.Lookup(assign.Name);
+        var assignType = scope.TryLookup(assign.Name, out var current) && current is not null ? current : value.Type;
         var provenance = value.Provenance == Provenance.ResolvedByModel
             ? Provenance.ResolvedByModel
             : Provenance.Deterministic;
-        return new IrAssign(assign.Name, value, isDecl, assign.Span, assignType, provenance);
+        return new IrAssign(assign.Name, value, isDecl, assign.Span, assignType, provenance)
+        {
+            Scope = assign.Scope,
+            Operator = assign.Operator,
+            Option = assign.Option
+        };
     }
 
     private IrIf BindIf(IfStmtAst stmt, Scope scope, IrType returnType)
@@ -1214,7 +1244,9 @@ public sealed class Binder
 
         var bodyScope = new Scope(scope);
         bodyScope.Define(stmt.Iterator, elementType, stmt.Span, _diagnostics, _filePath);
+        _loopDepth++;
         var body = stmt.Body.Select(s => BindStatement(s, bodyScope, returnType)).ToList();
+        _loopDepth--;
         return new IrForEach(stmt.Iterator, collection, body, stmt.Span, IrVoidType.Instance);
     }
 
@@ -1248,6 +1280,7 @@ public sealed class Binder
             SortExprAst sort => BindSort(sort, scope),
             TakeExprAst take => BindTake(take, scope),
             TreatExprAst treat => BindTreat(treat, scope),
+            ConstructExprAst construct => BindConstruct(construct, scope),
             _ => ErrorNode(expr.Span, "Unsupported expression.")
         };
 
@@ -1332,6 +1365,7 @@ public sealed class Binder
             decimal => IrPrimitiveType.Decimal,
             string => IrPrimitiveType.String,
             bool => IrPrimitiveType.Boolean,
+            null => IrPrimitiveType.Null,
             _ => IrErrorType.Instance
         };
         return new IrLiteral(lit.Value, lit.Span, type);
@@ -1495,6 +1529,20 @@ public sealed class Binder
         if (scope.TryLookup(name.Name, out var type))
         {
             return new IrVar(name.Name, name.Span, type!);
+        }
+
+        if (name.Name is "pipelineItem" or "arguments" or "errors" or "succeeded")
+        {
+            var auto = name.Name == "succeeded" ? IrPrimitiveType.Boolean : name.Name == "arguments" || name.Name == "errors"
+                ? (IrType)IrDynamicType.Instance
+                : IrDynamicType.Instance;
+            return new IrVar(name.Name, name.Span, auto);
+        }
+
+        if (_methodFields is not null && _methodFields.Fields.FirstOrDefault(field => field.Name == name.Name) is { } field)
+        {
+            var self = new IrVar("this", name.Span, _methodFields);
+            return new IrFieldAccess(self, field.Name, name.Span, field.Type);
         }
 
         if (WellKnownPlace(name.Name) is { } place)
@@ -1786,7 +1834,8 @@ public sealed class Binder
             return BindBuiltinCall(sig, args, call);
         }
 
-        if (args.Count != sig.Parameters.Count)
+        var splatted = args.Any(argument => argument is IrCall { IsBuiltin: true, Callee: "splat" });
+        if (!splatted && args.Count != sig.Parameters.Count)
         {
             _diagnostics.Error("E2009",
                 $"Function '{call.Name}' expects {sig.Parameters.Count} argument(s), got {args.Count}.",
@@ -1947,7 +1996,7 @@ public sealed class Binder
             return new IrFieldAccess(target, fieldName, span, field.Type);
         }
 
-        if (target.Type is IrDynamicType)
+        if (target.Type is IrDynamicType || target.Type is IrPrimitiveType { Name: "table" or "object" })
         {
             return new IrFieldAccess(target, fieldName, span, IrDynamicType.Instance, target.Provenance);
         }
@@ -2074,6 +2123,14 @@ public sealed class Binder
                 return IrPrimitiveType.Boolean;
             case "+" when IsString(left) || IsString(right):
                 return IrPrimitiveType.String;
+            case "+" when left is IrListType && right is IrListType:
+                return left;
+            case "+" when left is IrPrimitiveType { Name: "table" } && right is IrPrimitiveType { Name: "table" }:
+                return IrPrimitiveType.Table;
+            case "*" when IsString(left) && IsInteger(right):
+                return IrPrimitiveType.String;
+            case "*" when left is IrListType && IsInteger(right):
+                return left;
             case "+" or "-" or "*" or "/" or "%":
                 if (!IsNumeric(left) || !IsNumeric(right))
                 {
@@ -2104,6 +2161,15 @@ public sealed class Binder
                 "string" => IrPrimitiveType.String,
                 "boolean" => IrPrimitiveType.Boolean,
                 "nothing" or "void" => IrVoidType.Instance,
+                "character" or "char" => IrPrimitiveType.Character,
+                "float" or "double" or "number" => IrPrimitiveType.Float,
+                "table" or "hashtable" => IrPrimitiveType.Table,
+                "pattern" or "regex" => IrPrimitiveType.Pattern,
+                "xml" => IrPrimitiveType.Xml,
+                "block" or "scriptblock" => IrPrimitiveType.Block,
+                "object" or "pscustomobject" => IrPrimitiveType.Object,
+                "switch" => IrPrimitiveType.Switch,
+                var n when n.StartsWith("dictionary:") || n.StartsWith("grid:") || n.StartsWith("ref:") || n.StartsWith("list:") => new IrPrimitiveType(n),
                 var n when _records.TryGetValue(n, out var rec) => rec,
                 var n => UnknownType(n, type.Span)
             },
@@ -2184,6 +2250,8 @@ public sealed class Binder
 
         return (expected, actual) switch
         {
+            (IrPrimitiveType { Name: "null" }, _) => true,
+            (_, IrPrimitiveType { Name: "null" }) => true,
             (IrDynamicType, _) => true,
             (IrPrimitiveType, IrDynamicType) => true, // checked by cast when the script runs
             (IrRecordType, IrDynamicType) => false,  // needs "treat ... as a ..."

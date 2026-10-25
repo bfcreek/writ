@@ -173,6 +173,11 @@ public sealed class Lexer
             return ReadString();
         }
 
+        if (ch == '@' && _index + 1 < _source.Length && (_source[_index + 1] == '"' || _source[_index + 1] == '\''))
+        {
+            return ReadHereString();
+        }
+
         return ReadOperatorOrPunctuation();
     }
 
@@ -204,7 +209,7 @@ public sealed class Lexer
         }
 
         // Blank line or comment-only line: ignore indentation.
-        if (_index < _source.Length && (Peek() == '\n' || Peek() == '#'))
+        if (_index < _source.Length && (Peek() == '\n' || Peek() == '#' || IsBlockCommentStart()))
         {
             // Rewind spaces so SkipSpacesAndComments / newline handling can proceed normally
             // after we consume nothing for indent purposes. Actually we've already advanced.
@@ -260,11 +265,18 @@ public sealed class Lexer
                 continue;
             }
 
-            if (ch == '#')
+            if (ch == '#' || IsBlockCommentStart())
             {
-                while (_index < _source.Length && Peek() != '\n')
+                if (ch == '#')
                 {
-                    Advance();
+                    while (_index < _source.Length && Peek() != '\n')
+                    {
+                        Advance();
+                    }
+                }
+                else
+                {
+                    SkipBlockComment();
                 }
 
                 continue;
@@ -322,7 +334,25 @@ public sealed class Lexer
         }
 
         var intText = _source[start.._index];
-        return Make(TokenKind.IntegerLiteral, intText, startLine, startCol, intText.Length, long.Parse(intText));
+        var number = long.Parse(intText);
+        if (TryReadSuffix(out var suffix))
+        {
+            if (suffix is "d")
+            {
+                return Make(TokenKind.DecimalLiteral, intText + suffix, startLine, startCol, intText.Length + 1, (decimal)number);
+            }
+
+            if (suffix is "l")
+            {
+                return Make(TokenKind.IntegerLiteral, intText + suffix, startLine, startCol, intText.Length + 1, number);
+            }
+
+            number = Scale(number, suffix);
+            var text = _source[start.._index];
+            return Make(TokenKind.IntegerLiteral, text, startLine, startCol, text.Length, number);
+        }
+
+        return Make(TokenKind.IntegerLiteral, intText, startLine, startCol, intText.Length, number);
     }
 
     private Token ReadString()
@@ -333,15 +363,16 @@ public sealed class Lexer
         var sb = new System.Text.StringBuilder();
         while (_index < _source.Length && Peek() != '"' && Peek() != '\n')
         {
-            if (Peek() == '\\')
+            if (Peek() == '\\' || Peek() == '`')
             {
+                var mark = Peek();
                 Advance();
                 if (_index >= _source.Length)
                 {
                     break;
                 }
 
-                sb.Append(Peek() switch
+                sb.Append(mark == '`' ? ExpandBacktick(Peek()) : Peek() switch
                 {
                     'n' => '\n',
                     't' => '\t',
@@ -497,4 +528,127 @@ public sealed class Lexer
 
     private static Token Make(TokenKind kind, string text, int line, int column, int length, object? literal = null) =>
         new(kind, text, SourceSpan.FromToken(line, column, Math.Max(length, 1)), literal);
+
+    private bool IsBlockCommentStart() =>
+        _index + 1 < _source.Length && Peek() == '<' && _source[_index + 1] == '#';
+
+    private void SkipBlockComment()
+    {
+        var startLine = _line;
+        var startCol = _column;
+        Advance(); // <
+        Advance(); // #
+        while (_index + 1 < _source.Length && !(Peek() == '#' && _source[_index + 1] == '>'))
+        {
+            Advance();
+        }
+
+        if (_index + 1 >= _source.Length)
+        {
+            _diagnostics.Error("E1003", "Unterminated block comment.", _filePath,
+                SourceSpan.FromToken(startLine, startCol, 2));
+            return;
+        }
+
+        Advance();
+        Advance();
+    }
+
+    private bool TryReadSuffix(out string suffix)
+    {
+        suffix = "";
+        if (_index >= _source.Length || !char.IsLetter(Peek()))
+        {
+            return false;
+        }
+
+        var end = _index;
+        while (end < _source.Length && char.IsLetter(_source[end]))
+        {
+            end++;
+        }
+
+        var text = _source[_index..end].ToLowerInvariant();
+        if (text is not ("kb" or "mb" or "gb" or "tb" or "pb" or "d" or "l"))
+        {
+            return false;
+        }
+
+        while (_index < end)
+        {
+            Advance();
+        }
+
+        suffix = text;
+        return true;
+    }
+
+    private static long Scale(long number, string suffix)
+    {
+        var factor = suffix switch
+        {
+            "kb" => 1024L,
+            "mb" => 1024L * 1024,
+            "gb" => 1024L * 1024 * 1024,
+            "tb" => 1024L * 1024 * 1024 * 1024,
+            _ => 1024L * 1024 * 1024 * 1024 * 1024
+        };
+        return number * factor;
+    }
+
+    private static char ExpandBacktick(char ch) => ch switch
+    {
+        'n' => '\n',
+        't' => '\t',
+        'r' => '\r',
+        'a' => '\a',
+        'b' => '\b',
+        'f' => '\f',
+        'v' => '\v',
+        '0' => '\0',
+        var c => c
+    };
+
+    private Token ReadHereString()
+    {
+        var startLine = _line;
+        var startCol = _column;
+        var expandable = _source[_index + 1] == '"';
+        var quote = expandable ? '"' : '\'';
+        Advance(); // @
+        Advance(); // quote
+        if (_index >= _source.Length || Peek() != '\n')
+        {
+            _diagnostics.Error("E1003", "A here-string must break the line after the opening quote.", _filePath,
+                SourceSpan.FromToken(startLine, startCol, 2));
+        }
+        else
+        {
+            Advance();
+        }
+
+        var sb = new System.Text.StringBuilder();
+        while (_index < _source.Length)
+        {
+            if (_column == 1 && _index + 1 < _source.Length && Peek() == quote && _source[_index + 1] == '@')
+            {
+                Advance();
+                Advance();
+                if (sb.Length > 0 && sb[^1] == '\n')
+                {
+                    sb.Length--;
+                }
+
+                var value = sb.ToString();
+                return Make(TokenKind.StringLiteral, value, startLine, startCol, value.Length, value);
+            }
+
+            sb.Append(Peek());
+            Advance();
+        }
+
+        _diagnostics.Error("E1003", "Unterminated here-string.", _filePath,
+            SourceSpan.FromToken(startLine, startCol, 2));
+        return Make(TokenKind.StringLiteral, sb.ToString(), startLine, startCol, 2, sb.ToString());
+    }
 }

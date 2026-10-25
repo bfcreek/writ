@@ -6,7 +6,7 @@ namespace Writ.Compiler.Syntax;
 /// Parses English-like Writ into a structural AST.
 /// Sentences become declarations, assignments, calls, and operators — not an open prompt.
 /// </summary>
-public sealed class Parser
+public sealed partial class Parser
 {
     private readonly record struct EnglishName(string Camel, string Raw, SourceSpan Span, int WordCount);
 
@@ -73,6 +73,14 @@ public sealed class Parser
             {
                 declarations.Add(ParseInclude());
             }
+            else if (IsAtWord(_current, "using"))
+            {
+                declarations.Add(ParseUsingDecl());
+            }
+            else if (IsAtWord(_current, "export"))
+            {
+                declarations.Add(ParseExportDecl());
+            }
             else if (Check(TokenKind.Indent) || Check(TokenKind.Dedent))
             {
                 var bad = Advance();
@@ -117,10 +125,16 @@ public sealed class Parser
     private TypeDeclAst ParseTypeDecl()
     {
         var start = Advance().Span; // An / A
+        if (IsAtWord(_current, "enumeration", "enum"))
+        {
+            return ParseEnum(start);
+        }
+
         var name = ParseName();
         Consume(TokenKind.Has, "Expected 'has' after the type name.");
 
         var fields = new List<FieldDeclAst>();
+        var methods = new List<FunctionAst>();
         SourceSpan end;
         if (Check(TokenKind.NewLine))
         {
@@ -136,6 +150,17 @@ public sealed class Parser
 
                 var mark = _current;
                 Match(TokenKind.And);
+                if (Check(TokenKind.To))
+                {
+                    methods.Add(ParseFunction());
+                    if (_current == mark)
+                    {
+                        Advance();
+                    }
+
+                    continue;
+                }
+
                 fields.Add(ParseField());
                 Match(TokenKind.NewLine);
                 if (_current == mark)
@@ -169,7 +194,10 @@ public sealed class Parser
             Match(TokenKind.NewLine);
         }
 
-        return new TypeDeclAst(name.Camel, fields, Combine(start, end));
+        return new TypeDeclAst(name.Camel, fields, Combine(start, end))
+        {
+            Methods = methods
+        };
     }
 
     private FieldDeclAst ParseField()
@@ -287,6 +315,19 @@ public sealed class Parser
     private FunctionAst ParseFunction()
     {
         var start = Consume(TokenKind.To, "Expected 'To'.").Span;
+        var filter = false;
+        var command = false;
+        if (IsAtWord(_current, "filter"))
+        {
+            Advance();
+            filter = true;
+        }
+        else if (IsAtWord(_current, "command"))
+        {
+            Advance();
+            command = true;
+        }
+
         var name = ParseName();
         Match(TokenKind.Comma);
 
@@ -298,7 +339,11 @@ public sealed class Parser
         Consume(TokenKind.NewLine, "Expected a newline after the description.");
         var body = ParseBlock();
         var end = body.Count > 0 ? body[^1].Span : returnType.Span;
-        return new FunctionAst(name.Camel, parameters, returnType, body, Combine(start, end));
+        return new FunctionAst(name.Camel, parameters, returnType, body, Combine(start, end))
+        {
+            IsFilter = filter,
+            CmdletBinding = command
+        };
     }
 
     private List<ParameterAst> ParseParameterList()
@@ -317,7 +362,9 @@ public sealed class Parser
                 }
 
                 var paramType = ParseType();
-                parameters.Add(new ParameterAst(paramName.Camel, paramType, Combine(paramName.Span, paramType.Span)));
+                var parameter = new ParameterAst(paramName.Camel, paramType, Combine(paramName.Span, paramType.Span));
+                parameter = ParseParameterTail(parameter);
+                parameters.Add(parameter);
                 var mark = _current;
                 var more = Match(TokenKind.And) || (Check(TokenKind.Comma) && !CheckNext(TokenKind.Returning) && Match(TokenKind.Comma));
                 if (!more)
@@ -374,7 +421,7 @@ public sealed class Parser
 
         if (Check(TokenKind.For))
         {
-            return ParseForEach();
+            return CheckNext(TokenKind.Each) ? ParseForEach() : ParseCountedFor();
         }
 
         if (Check(TokenKind.Return) || Check(TokenKind.Give))
@@ -400,6 +447,11 @@ public sealed class Parser
         if (Check(TokenKind.Try))
         {
             return ParseTry();
+        }
+
+        if (TryParseConstruct() is { } construct)
+        {
+            return construct;
         }
 
         if (!LineHasAssignment())
@@ -1188,17 +1240,44 @@ public sealed class Parser
 
     private AssignStmtAst ParseAssign()
     {
-        var start = Peek().Span;
         Match(TokenKind.Let);
-        var name = ParseName();
+        var start = Peek().Span;
+        string? scope = null;
+        Match(TokenKind.The, TokenKind.A, TokenKind.An);
+        if (IsAtWord(_current, "global", "local", "private")
+            || (IsAtWord(_current, "script") && !IsAtWord(_current + 1, "folder", "directory")))
+        {
+            scope = Advance().Text.ToLowerInvariant();
+        }
+
+        var words = ReadWords();
+        if (words is null)
+        {
+            var bad = Peek();
+            _diagnostics.Error("E1104", $"Expected a name, found '{bad.Text}'.", _filePath, bad.Span);
+            words = new EnglishName("_error", "_error", bad.Span, 1);
+        }
+
+        var name = words.Value;
         if (!Match(TokenKind.Is, TokenKind.Are, TokenKind.Be))
         {
             _diagnostics.Error("E1104", "Expected 'is' to give this name a value.", _filePath, Peek().Span);
         }
 
+        string? option = null;
+        if (IsWord(_current, "fixed", "locked") && IsWord(_current + 1, "at"))
+        {
+            option = Advance().Text.Equals("locked", StringComparison.OrdinalIgnoreCase) ? "constant" : "readonly";
+            Advance();
+        }
+
         var value = ParseExpressionOrPhrase();
         Match(TokenKind.NewLine);
-        return new AssignStmtAst(name.Camel, value, Combine(start, value.Span));
+        return new AssignStmtAst(name.Camel, value, Combine(start, value.Span))
+        {
+            Scope = scope,
+            Option = option
+        };
     }
 
     private IfStmtAst ParseIf()
@@ -1299,6 +1378,14 @@ public sealed class Parser
         }
 
         var name = Consume(TokenKind.Identifier, "Expected a type name.");
+        if (name.Text.Equals("dictionary", StringComparison.OrdinalIgnoreCase)
+            || name.Text.Equals("grid", StringComparison.OrdinalIgnoreCase)
+            || name.Text.Equals("reference", StringComparison.OrdinalIgnoreCase)
+            || name.Text.Equals("ref", StringComparison.OrdinalIgnoreCase))
+        {
+            return FinishCompositeType(name);
+        }
+
         return new NamedTypeAst(name.Text, name.Span);
     }
 
@@ -1375,6 +1462,11 @@ public sealed class Parser
                 Advance();
                 expr = new CallExprAst("csv", [expr], Combine(expr.Span, cast.Span));
             }
+            else if (cast.Kind == TokenKind.Identifier && IsPrimitiveName(cast.Text))
+            {
+                Advance();
+                expr = new ConstructExprAst("cast", [expr, new LiteralExprAst(cast.Text, cast.Span)], Combine(expr.Span, cast.Span));
+            }
             else if (cast.Kind is TokenKind.List or TokenKind.Identifier)
             {
                 _current--; // give the article back to ParseType
@@ -1393,16 +1485,45 @@ public sealed class Parser
             }
         }
 
-        return expr;
+        return ApplySoftCast(expr);
     }
 
     private ExprAst ParseOr()
     {
         var expr = ParseAnd();
-        while (Match(TokenKind.Or))
+        while (true)
         {
-            var right = ParseAnd();
-            expr = new BinaryExprAst(expr, TokenKind.Or, right, Combine(expr.Span, right.Span));
+            if (Match(TokenKind.Or))
+            {
+                if (IsAtWord(_current, "else"))
+                {
+                    Advance();
+                    var chained = ParseAnd();
+                    expr = new ConstructExprAst("orElse", [expr, chained], Combine(expr.Span, chained.Span));
+                    continue;
+                }
+
+                var right = ParseAnd();
+                expr = new BinaryExprAst(expr, TokenKind.Or, right, Combine(expr.Span, right.Span));
+                continue;
+            }
+
+            if (IsAtWord(_current, "xor"))
+            {
+                Advance();
+                var right = ParseAnd();
+                expr = new ConstructExprAst("xor", [expr, right], Combine(expr.Span, right.Span));
+                continue;
+            }
+
+            if (Match(TokenKind.Otherwise))
+            {
+                var right = ParseAnd();
+                expr = new ConstructExprAst("coalesce", [expr, right], Combine(expr.Span, right.Span));
+                continue;
+            }
+
+            break;
         }
 
         return expr;
@@ -1413,6 +1534,14 @@ public sealed class Parser
         var expr = ParseComparison();
         while (Match(TokenKind.And))
         {
+            if (IsAtWord(_current, "then"))
+            {
+                Advance();
+                var chained = ParseComparison();
+                expr = new ConstructExprAst("andThen", [expr, chained], Combine(expr.Span, chained.Span));
+                continue;
+            }
+
             var right = ParseComparison();
             expr = new BinaryExprAst(expr, TokenKind.And, right, Combine(expr.Span, right.Span));
         }
@@ -1425,10 +1554,15 @@ public sealed class Parser
         var expr = ParseSum();
         if (Match(TokenKind.Is))
         {
+            if (TryParseIs(expr) is { } typed)
+            {
+                return ParseConstructInfix(typed);
+            }
+
             var op = ParseEnglishComparison();
             var right = ParseSum();
             expr = new BinaryExprAst(expr, op, right, Combine(expr.Span, right.Span));
-            return expr;
+            return ParseConstructInfix(expr);
         }
 
         if (Match(TokenKind.EqualEqual, TokenKind.BangEqual, TokenKind.Less, TokenKind.LessEqual,
@@ -1439,7 +1573,7 @@ public sealed class Parser
             expr = new BinaryExprAst(expr, op, right, Combine(expr.Span, right.Span));
         }
 
-        return expr;
+        return ParseConstructInfix(expr);
     }
 
     private TokenKind ParseEnglishComparison()
@@ -1501,13 +1635,13 @@ public sealed class Parser
 
     private ExprAst ParseProduct()
     {
-        var expr = ParseUnary();
+        var expr = ParseThrough();
         while (true)
         {
             if (Match(TokenKind.Star, TokenKind.Slash, TokenKind.Percent, TokenKind.Modulo))
             {
                 var op = Previous().Kind == TokenKind.Modulo ? TokenKind.Percent : Previous().Kind;
-                var right = ParseUnary();
+                var right = ParseThrough();
                 expr = new BinaryExprAst(expr, op, right, Combine(expr.Span, right.Span));
                 continue;
             }
@@ -1515,7 +1649,7 @@ public sealed class Parser
             if (Match(TokenKind.Divided))
             {
                 Consume(TokenKind.By, "Expected 'by' after 'divided'.");
-                var right = ParseUnary();
+                var right = ParseThrough();
                 expr = new BinaryExprAst(expr, TokenKind.Slash, right, Combine(expr.Span, right.Span));
                 continue;
             }
@@ -1528,6 +1662,14 @@ public sealed class Parser
 
     private ExprAst ParseUnary()
     {
+        if (IsWord(_current, "bitwise") && IsWord(_current + 1, "not"))
+        {
+            var start = Advance().Span;
+            Advance();
+            var operand = ParseUnary();
+            return new ConstructExprAst("bnot", [operand], Combine(start, operand.Span));
+        }
+
         if (Match(TokenKind.Not, TokenKind.Minus))
         {
             var op = Previous();
@@ -1535,7 +1677,7 @@ public sealed class Parser
             return new UnaryExprAst(op.Kind, operand, Combine(op.Span, operand.Span));
         }
 
-        return ParsePrimary();
+        return ParsePostfix(ParsePrimary());
     }
 
     private ExprAst ParsePrimary()
@@ -1554,7 +1696,7 @@ public sealed class Parser
                 return Interpolate(text, Previous().Span);
             }
 
-            return new LiteralExprAst(Previous().Literal, Previous().Span);
+            return FinishLiteral(new LiteralExprAst(Previous().Literal, Previous().Span));
         }
 
         if (Check(TokenKind.Ask))
@@ -1570,6 +1712,17 @@ public sealed class Parser
         if (IsRunCall())
         {
             return ParseRun();
+        }
+
+        if (IsAtWord(_current, "nothing", "null"))
+        {
+            var token = Advance();
+            return new LiteralExprAst(null, token.Span);
+        }
+
+        if (IsCallCommand())
+        {
+            return ParseCallCommand();
         }
 
         if (Check(TokenKind.The) || Check(TokenKind.A) || Check(TokenKind.An) || Check(TokenKind.Identifier)
@@ -1868,6 +2021,7 @@ public sealed class Parser
             expr = new SortExprAst(expr, field, descending, Combine(expr.Span, end));
         }
 
+        expr = ApplyCalling(expr);
         return expr;
     }
 
@@ -1897,6 +2051,10 @@ public sealed class Parser
     {
         var start = Peek().Span;
         var article = Match(TokenKind.The) || Match(TokenKind.A) || Match(TokenKind.An);
+        if (TryParseConstructNoun(start, article) is { } noun)
+        {
+            return noun;
+        }
 
         if (article && Match(TokenKind.Empty))
         {
@@ -2138,7 +2296,7 @@ public sealed class Parser
         var words = new List<string>();
         var start = Peek().Span;
         var end = start;
-        while (Check(TokenKind.Identifier))
+        while (Check(TokenKind.Identifier) && (words.Count == 0 || !IsTrailingOperator(Peek().Text)))
         {
             var tok = Advance();
             words.Add(tok.Text);
@@ -2147,6 +2305,19 @@ public sealed class Parser
 
         return new EnglishName(ToCamel(words), string.Join(' ', words), Combine(start, end), words.Count);
     }
+
+    private static bool IsTrailingOperator(string text) =>
+        text.Equals("spread", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("splatted", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("calling", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("joined", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("replacing", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("formatted", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("piped", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("bitwise", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("shifted", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("contains", StringComparison.OrdinalIgnoreCase)
+        || text.Equals("matches", StringComparison.OrdinalIgnoreCase);
 
     private static string ToCamel(IReadOnlyList<string> words)
     {
