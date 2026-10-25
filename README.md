@@ -1,5 +1,7 @@
 # Writ
 
+This repository is public and read-only.
+
 Experimental natural-language programming language. English sentences compile to typed operations and then to a PowerShell 7 script. Constraints in `writ.constraints.json` or `~/.writ/constraints.json` can require or forbid traits of that script; `--target powershell` skips the choice. A sentence that leaves a type or an operation unstated is matched against the closed catalog: an exact phrase wins, and a reordered or lightly inflected phrase falls back to a local template index. PowerShell cmdlets and MCP tools are ordinary sentences. See [docs/SUPPORTED.md](docs/SUPPORTED.md), [scratch/powershell-plan.md](scratch/powershell-plan.md), and [scratch/intent-language-proposal.md](scratch/intent-language-proposal.md).
 
 Samples are grouped under `samples/`. See [samples/README.md](samples/README.md).
