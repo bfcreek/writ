@@ -11,7 +11,7 @@ public class ScriptEntryTests
     [Fact]
     public void When_run_becomes_a_param_block_with_help_and_includes_helpers()
     {
-        var path = TestPaths.Sample("largest-files.writ");
+        var path = TestPaths.Sample(Path.Combine("files", "largest-files.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
@@ -32,11 +32,11 @@ public class ScriptEntryTests
     [Fact]
     public void Entry_runs_through_the_executor_and_as_a_plain_script()
     {
-        var path = TestPaths.Sample("largest-files.writ");
+        var path = TestPaths.Sample(Path.Combine("files", "largest-files.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
-        var folder = Path.Combine(TestPaths.RepoRoot(), "samples");
+        var folder = Path.Combine(TestPaths.RepoRoot(), "samples", "files");
         var input = System.Text.Json.JsonSerializer.Serialize(new { folder });
         var viaExecutor = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "largest-files", "Main", input);
         Assert.True(viaExecutor.Success, string.Join(Environment.NewLine, viaExecutor.Errors));

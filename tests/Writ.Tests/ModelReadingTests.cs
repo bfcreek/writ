@@ -1,4 +1,6 @@
+using Writ.Compiler.Capabilities;
 using Writ.Compiler.Compilation;
+using Writ.Compiler.Diagnostics;
 using Writ.Compiler.Execution;
 using Writ.Compiler.Ir;
 using Writ.Compiler.Semantics;
@@ -10,7 +12,7 @@ public class ModelReadingTests
     [Fact]
     public void Omitted_field_types_and_subtotal_compile_and_run()
     {
-        var path = SamplePath("innate-total.writ");
+        var path = SamplePath(Path.Combine("basics", "innate-total.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
@@ -23,7 +25,7 @@ public class ModelReadingTests
             result.GeneratedPowerShell!,
             "innate-total",
             "CalculateTotal",
-            File.ReadAllText(SamplePath("input-calculate-total.json")));
+            File.ReadAllText(SamplePath(Path.Combine("basics", "input-calculate-total.json"))));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(27.54m, Assert.IsType<decimal>(exec.Value));
     }
@@ -108,7 +110,7 @@ public class ModelReadingTests
             model: new ModelOptions { Debug = writer });
 
         var trace = writer.ToString();
-        Assert.Contains("debug: model read", trace);
+        Assert.Contains("debug: template read", trace);
         Assert.Contains("list the files here", trace);
         Assert.False(result.Success);
     }
@@ -126,7 +128,7 @@ public class ModelReadingTests
 
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var trace = writer.ToString();
-        Assert.Equal(1, CountOf(trace, "debug: model read"));
+        Assert.Equal(1, CountOf(trace, "debug: template read"));
         Assert.Contains("text: InvoiceItem has price and quantity", trace);
         Assert.Contains("decimal", trace);
         Assert.Contains("integer", trace);
@@ -145,8 +147,8 @@ public class ModelReadingTests
 
         Assert.False(result.Success);
         var trace = writer.ToString();
-        Assert.Contains("2 rule matches; not sent to the model", trace);
-        Assert.DoesNotContain("debug: model read", trace);
+        Assert.Contains("2 rule matches; not read as a template", trace);
+        Assert.DoesNotContain("debug: template read", trace);
     }
 
     [Fact]
@@ -215,7 +217,7 @@ public class ModelReadingTests
     [Fact]
     public void Spoken_order_is_not_execution_order()
     {
-        var path = SamplePath("but-first.writ");
+        var path = SamplePath(Path.Combine("payments", "but-first.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var sequence = result.Ir!.Functions[0].Body
@@ -232,9 +234,59 @@ public class ModelReadingTests
             source,
             "but-first",
             "Recover",
-            File.ReadAllText(SamplePath("input-but-first.json")));
+            File.ReadAllText(SamplePath(Path.Combine("payments", "input-but-first.json"))));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.True(Assert.IsType<bool>(exec.Value));
+    }
+
+    [Fact]
+    public async Task Reordered_phrase_uses_the_nearest_catalog_template()
+    {
+        var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();
+        var reading = await new InnateLanguageModel().ReadAsync(
+            Request("the file contents", operations, [new SymbolInfo("file", "string")]));
+        Assert.Equal(["pwsh.Get-Content"], reading.Selections.Select(selection => selection.Id).ToArray());
+        Assert.Equal("file", reading.Selections[0].Bindings["Path"]);
+    }
+
+    [Fact]
+    public async Task Moved_words_keep_service_and_process_apart()
+    {
+        var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();
+        var reading = await new InnateLanguageModel().ReadAsync(
+            Request("the service should stop", operations, [new SymbolInfo("service", "string")]));
+        Assert.Equal(["pwsh.Stop-Service"], reading.Selections.Select(selection => selection.Id).ToArray());
+    }
+
+    [Fact]
+    public async Task Two_equally_specific_templates_are_rejected()
+    {
+        var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();
+        var request = Request("the service process should stop", operations, []);
+        var reading = await new InnateLanguageModel().ReadAsync(request);
+        var bag = new DiagnosticBag();
+        Assert.Null(ModelReadings.Accept(reading, request, bag, null, default));
+        Assert.Contains(bag.Items, diagnostic => diagnostic.Code == "E2104");
+    }
+
+    [Fact]
+    public async Task An_unrelated_sentence_matches_no_template()
+    {
+        var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();
+        var reading = await new InnateLanguageModel().ReadAsync(Request("wave hello there", operations, []));
+        Assert.Empty(reading.Selections);
+    }
+
+    [Fact]
+    public void File_contents_compiles_to_get_content()
+    {
+        var result = new CompilationPipeline().Compile("""
+            Allow reading files
+            When run, given a file which is a string, returning a string
+                return the file contents
+            """, "file-contents.writ");
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Contains("Get-Content", result.GeneratedPowerShell);
     }
 
     private static ModelRequest Request(string text, IReadOnlyList<CatalogEntry> operations, IReadOnlyList<SymbolInfo> symbols) =>

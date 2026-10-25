@@ -36,7 +36,7 @@ When run, given a folder which is a string, returning a list of string
     return the lines
 ```
 
-The compiled script has comment-based help from the leading comments, a `param([string]$folder)` block, and runs as `pwsh ./largest-files.ps1 -folder C:\x`. Multi-word names become camelCase in the typed program and in JSON input (`a tax rate` is `taxRate`).
+The compiled script has comment-based help from the leading comments, a `param([string]$folder)` block, and runs as `pwsh ./largest-files.ps1 -folder C:\x`. Multi-word names become camelCase in the typed program and in JSON input (`a tax rate` is `taxRate`). A keyword is special in the sentence position that uses it, and a name wherever a name is read: `To Count`, `the length is 3`, `given a which which is an integer`. `is`, `are`, and `be` stay the copula. `the count of`, `the length of`, `the sum of`, and `the first 3 of` stay operations.
 
 ## What the compiler accepts
 
@@ -55,8 +55,8 @@ The compiled script has comment-based help from the leading comments, a `param([
 | `Use payments from mcp "pwsh -File server.ps1"` | Bind an MCP server directly; its tool list is the manifest |
 | `the name is <value>` | Assignment |
 | `if <condition>` / `otherwise` / `otherwise if` / `otherwise when` | Branch |
-| `for each name in <collection>` | Loop |
-| `while <condition>` / `until <condition>` | Loop |
+| `for each name in <collection>` | Loop. The same loop can be one sentence: `for each number from 1 to 3, add it to the total`. `it` is the current item; after the sentence it is the earlier value again. `them` is the list |
+| `while <condition>` / `until <condition>` | Loop. `while it is less than 3, increase it` is the same loop in one sentence. `keep increasing it until it is 3` repeats the action first |
 | `try to` / `if that fails` / `finally` | try / catch / finally; `the error` is the message in the failure block |
 | `return <value>` / `give back <value>` | Return |
 | `say <value>` / `display <value>` / `print <value>` | Console output. `and` joins several values. `{…}` interpolates any expression |
@@ -98,7 +98,7 @@ The compiled script has comment-based help from the leading comments, a `param([
 | `the data as a list of Invoice` / `the outcome as a RetryResult` | Check untyped data against a declared type at run time |
 | `the environment variable HOME`, `the home folder`, `the current folder`, `the temp folder` | Environment |
 | `ask payments to list failed with the day[, retrying up to 3 times]` | Capability call; retry only for reads (`E4006` otherwise) |
-| A phrase that is not one of the forms above | Open intent, resolved by the model against the command catalog or rejected |
+| A phrase that is not one of the forms above | Open intent, matched against the command catalog or rejected |
 
 ### Types
 
@@ -106,56 +106,21 @@ The compiled script has comment-based help from the leading comments, a `param([
 
 ## Commands (PowerShell cmdlets)
 
-`tools/powershell.catalog.json` is a pinned catalog of cmdlets with English phrases, parameters, and effects: `Get-ChildItem`, `Get-Item`, `Get-Content`, `Set-Content`, `Add-Content`, `New-Item`, `Copy-Item`, `Move-Item`, `Rename-Item`, `Remove-Item`, `Test-Path`, `Join-Path`, `Split-Path`, `Resolve-Path`, `Set-Location`, `Get-Process`, `Stop-Process`, `Start-Process`, `Get-Service`, `Start-Service`, `Stop-Service`, `Restart-Service`, `Get-Date`, `Invoke-RestMethod`, `Invoke-WebRequest`, `Import-Csv`, `Export-Csv`, `Clear-Host`, `Start-Sleep`, `Read-Host`. A sentence like `the items in the folder, files only` is read by the model against that catalog and becomes `Get-ChildItem -Path $folder -File`. When several phrases match, the most specific one wins. The cmdlet's effect must be granted with `Allow …` (`E4003`). Commands with write effects receive `-WhatIf` under `--dry-run`.
+`tools/powershell.catalog.json` is a pinned catalog of cmdlets with English phrases, parameters, and effects: `Get-ChildItem`, `Get-Item`, `Get-Content`, `Set-Content`, `Add-Content`, `New-Item`, `Copy-Item`, `Move-Item`, `Rename-Item`, `Remove-Item`, `Test-Path`, `Join-Path`, `Split-Path`, `Resolve-Path`, `Set-Location`, `Get-Process`, `Stop-Process`, `Start-Process`, `Get-Service`, `Start-Service`, `Stop-Service`, `Restart-Service`, `Get-Date`, `Invoke-RestMethod`, `Invoke-WebRequest`, `Import-Csv`, `Export-Csv`, `Clear-Host`, `Start-Sleep`, `Read-Host`. A sentence like `the items in the folder, files only` is matched against that catalog and becomes `Get-ChildItem -Path $folder -File`. When several phrases match, the most specific one wins. The cmdlet's effect must be granted with `Allow …` (`E4003`). Commands with write effects receive `-WhatIf` under `--dry-run`.
 
 The sentence table's console, file, path, process, and service rows are recognized directly, including the verb and noun variants written there. A looser sentence that does not fit one of those shapes is still read from the catalog. A program that uses one of the direct sentences compiles to PowerShell.
 
-## Model readings
+## Template readings
 
-When a sentence leaves a type or an operation unstated, the compiler passes that text to a model together with the closed list of types and operations this language can represent. The model returns one or more entries from that list. A return value outside the list is rejected (`E2105`). Several competing choices for the same step are rejected (`E2104`).
+When a sentence leaves a type or an operation unstated, the compiler matches that text against the closed list of types and operations this language can represent. A type comes from the word list (`price` is a decimal, `quantity` is an integer) unless the sentence already states the type. An operation matches a catalog phrase exactly. When the words are present but reordered, or one word is a short inflection of the phrase (`files` for `file`), a local template index picks the nearest phrase that has at least two content words. Every content word of that phrase has to be in the sentence. The longest such phrase wins. Two phrases of that length are rejected (`E2104`). An id outside the list is rejected (`E2105`).
 
-When the entries are operations, their order is the order they run. The model straightens human foibles before it returns that list: `but first`, `gut first`, `before`, and `after` move a step earlier, and `then` keeps spoken order.
+The index is the phrases already in the command catalog and in each capability's operation name. Adding a phrase there covers a new variant. Nothing is sent off the machine.
 
-An explicit type or definition is a specific rule and is not sent back to the model. Every accepted reading is recorded in the lockfile and shown by `writ explain`.
+When the entries are operations, their order is the order they run. `but first`, `gut first`, `before`, and `after` move a step earlier, and `then` keeps spoken order.
 
-### Which model
+An explicit type or definition is a specific rule and is not read again. Every accepted reading is recorded in the lockfile and shown by `writ explain`.
 
-With no model file, readings use the built-in stand-in. It is deterministic and offline. A project file `writ.model.json`, or `~/.writ/model.json` when the project has none, names the model the command line calls. The nearest project file wins, the same walk as `writ.constraints.json`. `--model <name>` selects a profile for that command. A library call reads the project file only.
-
-The file is either one model or a named list:
-
-```json
-{
-  "use": "ollama",
-  "models": {
-    "innate": { "provider": "innate" },
-    "ollama": { "provider": "ollama", "model": "qwen2.5-coder" },
-    "openai": { "provider": "openai", "model": "gpt-4.1-mini" },
-    "copilot": { "provider": "copilot", "model": "gpt-4o" },
-    "compatible": {
-      "provider": "compatible",
-      "model": "local-model",
-      "endpoint": "http://127.0.0.1:1234/v1"
-    }
-  }
-}
-```
-
-| Provider | Also written as | Default endpoint | API key variable |
-|----------|-----------------|------------------|------------------|
-| `innate` | `built-in` | — | — |
-| `ollama` | | `http://127.0.0.1:11434/v1` | optional, `apiKeyEnv` |
-| `openai` | | `https://api.openai.com/v1` | `OPENAI_API_KEY` |
-| `copilot` | `github-copilot` | `https://api.githubcopilot.com` | `GITHUB_TOKEN` |
-| `compatible` | `openai-compatible`, `custom` | required | optional, `apiKeyEnv` |
-
-`compatible` is any server that speaks the OpenAI chat completions API. Ollama, OpenAI, and Copilot use that same request. Copilot also sends `Copilot-Integration-Id: copilot-developer-cli`. A single model can be written without `models`, as `{ "provider": "ollama", "model": "qwen2.5-coder" }`.
-
-`apiKeyEnv` names the environment variable that holds the key. A key written in the file is `E2107`. An unknown provider, a missing model name, a missing endpoint, or an empty required variable is the same code. The model is asked only when a sentence leaves a type or an operation unstated. A transport failure or a reply that is not a reading is `E2106`. The catalog check is unchanged: an id outside the list is still `E2105`.
-
-`temperature` defaults to 0 and may be from 0 to 2. `timeoutSeconds` defaults to 120 and may be from 1 to 600. `samples/model` shows every provider and leaves `use` on `innate`, so a check of that folder stays offline.
-
-`--debug` on `check`, `compile`, `run`, `lock`, `explain`, `diff`, and `tools` writes each rule decision and each model call to standard error. A rule match says why the model was not asked. A model call shows the sentence, the catalog that was offered, and the reply. A chat provider also shows the request URL and the response body. The API key is not written.
+`--debug` on `check`, `compile`, `run`, `lock`, `explain`, `diff`, and `tools` writes each rule decision and each template reading to standard error: the sentence, the catalog that was offered, and the reply. A rule match says why the sentence was not read as a template. A failure inside the reader is `E2106`.
 
 ## Capabilities and MCP
 
@@ -163,7 +128,7 @@ A manifest declares types, operations, allowed operations, granted effects, and 
 
 `Use payments from mcp "…"` skips the manifest: tools become operations, input schemas become arguments, results are untyped data, read-only tools need `Allow network access`, and the rest need `Allow changing external systems`. The quoted text is a command line, or an `http://` or `https://` URL. `tools/mcp-test-server.ps1` is the in-repo server used by tests; it logs every JSON-RPC method so tests can prove `check` never calls a tool.
 
-The same servers can be declared in `writ.mcp.json`. The compiler reads every such file from the program's folder upward, then `%USERPROFILE%\.writ\writ.mcp.json`. The closest file wins for a given alias; the user file is only the fallback. A duplicate alias in one file is an error. An explicit `Use` for the same alias wins over all of them. A server is queried only when the program asks for that alias, or when a sentence names the alias so the model can select one of its tools. Checking still only sends `initialize` and `tools/list`.
+The same servers can be declared in `writ.mcp.json`. The compiler reads every such file from the program's folder upward, then `%USERPROFILE%\.writ\writ.mcp.json`. The closest file wins for a given alias; the user file is only the fallback. A duplicate alias in one file is an error. An explicit `Use` for the same alias wins over all of them. A server is queried only when the program asks for that alias, or when a sentence names the alias so a tool can be selected from its list. Checking still only sends `initialize` and `tools/list`.
 
 A server is stdio when it has `command`, and REST when it has `url`. A relative command runs in the directory of the file that declared it.
 
@@ -223,7 +188,7 @@ Constraints live in JSON. The project file is `writ.constraints.json`, next to t
 
 ## Lockfile
 
-`<file>.writ.lock.json` pins the source hash, compiler version, IR schema, cmdlet catalog hash, every capability's discovery hash (manifest content or MCP tool list) and operations, every model reading, and the chosen emission. `check`, `compile`, and `run` fail when a tool changed since it was locked (`E4008`); `writ lock` accepts the change. `--frozen` fails on any difference (`E4009`), including a different emission. `writ diff` says whether an edit changed meaning or only text.
+`<file>.writ.lock.json` pins the source hash, compiler version, IR schema, cmdlet catalog hash, every capability's discovery hash (manifest content or MCP tool list) and operations, every template reading, and the chosen emission. `check`, `compile`, and `run` fail when a tool changed since it was locked (`E4008`); `writ lock` accepts the change. `--frozen` fails on any difference (`E4009`), including a different emission. `writ diff` says whether an edit changed meaning or only text.
 
 ## Pipeline
 

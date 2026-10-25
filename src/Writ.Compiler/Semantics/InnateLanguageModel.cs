@@ -3,9 +3,10 @@ using System.Text.RegularExpressions;
 namespace Writ.Compiler.Semantics;
 
 /// <summary>
-/// Deterministic stand-in for a model. It uses ordinary word knowledge, and only by
-/// choosing entries from the catalog it was given. A specific rule wins over that knowledge.
-/// Operation results are returned in execution order, so "but first" runs before the clause that precedes it.
+/// Deterministic catalog reader. Types come from a word list. Operations match a catalog
+/// phrase exactly, and otherwise the nearest template in <see cref="TemplateIndex"/>.
+/// A specific rule wins over either. Operation results are returned in execution order,
+/// so "but first" runs before the clause that precedes it.
 /// </summary>
 public sealed partial class InnateLanguageModel : ILanguageModel
 {
@@ -131,7 +132,7 @@ public sealed partial class InnateLanguageModel : ILanguageModel
         var selections = new List<ModelSelection>();
         for (var order = 0; order < clauses.Count; order++)
         {
-            var matches = MatchOperations(clauses[order], request);
+            var matches = MatchOperations(clauses[order], request, out var fromVector);
             if (matches.Count == 0)
             {
                 if (!ordered)
@@ -145,11 +146,14 @@ public sealed partial class InnateLanguageModel : ILanguageModel
 
             foreach (var match in matches)
             {
+                var rationale = fromVector
+                    ? $"Nearest catalog template {match.Id} for \"{clauses[order]}\"."
+                    : ordered ? $"Step {order + 1}: {match.Id}." : $"{match.Id} for \"{clauses[order]}\".";
                 selections.Add(new ModelSelection(
                     match.Id,
                     clauses[order],
                     BindArguments(match, clauses[order], request),
-                    ordered ? $"Step {order + 1}: {match.Id}." : $"{match.Id} for \"{clauses[order]}\".",
+                    rationale,
                     order));
             }
         }
@@ -194,8 +198,9 @@ public sealed partial class InnateLanguageModel : ILanguageModel
         return false;
     }
 
-    private static List<CatalogEntry> MatchOperations(string clause, ModelRequest request)
+    private static List<CatalogEntry> MatchOperations(string clause, ModelRequest request, out bool fromVector)
     {
+        fromVector = false;
         var matches = new List<CatalogEntry>();
         var commandMatches = new List<(CatalogEntry Entry, int PhraseLength)>();
         foreach (var operation in request.Operations)
@@ -222,7 +227,19 @@ public sealed partial class InnateLanguageModel : ILanguageModel
             matches.AddRange(commandMatches.Where(m => m.PhraseLength == best).Select(m => m.Entry));
         }
 
-        return matches;
+        if (matches.Count > 0)
+        {
+            return matches;
+        }
+
+        var near = TemplateIndex.Near(clause, request.Operations);
+        if (near.Count == 0)
+        {
+            return matches;
+        }
+
+        fromVector = true;
+        return near;
     }
 
     private static int LongestPhrase(string clause, CatalogEntry operation)

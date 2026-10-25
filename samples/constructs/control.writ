@@ -1,0 +1,47 @@
+# Branches, counted loops, while, until, repeat, switch, and a labeled break.
+# Running returns 7.
+
+When run, returning an integer
+    the score is 0
+    if 2 is greater than 1
+        increase the score
+    otherwise
+        increase the score by 10
+    if 1 is greater than 2
+        increase the score by 10
+    otherwise if 3 is greater than 2
+        increase the score
+    the total is 0
+    for the i from 1 to 3
+        increase the total by the i
+    if the total is equal to 6
+        increase the score
+    the k is 3
+    while the k is greater than 0
+        decrease the k
+    if the k is equal to 0
+        increase the score
+    the n is 0
+    repeat
+        increase the n
+    until the n is equal to 2
+    if the n is equal to 2
+        increase the score
+    switch on "b"
+        when "a"
+            increase the score by 10
+        when "b" or "c"
+            increase the score
+        otherwise
+            increase the score by 10
+    the jumped is 0
+    mark outer
+    while the jumped is less than 10
+        increase the jumped
+        if the jumped is equal to 2
+            continue
+        if the jumped is equal to 4
+            break to outer
+    if the jumped is equal to 4
+        increase the score
+    return the score

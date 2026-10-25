@@ -1,17 +1,14 @@
 using System.Globalization;
-using System.Text.Json;
 using Writ.Compiler.Diagnostics;
 
 namespace Writ.Compiler.Semantics;
 
 /// <summary>
 /// Text written to standard error when <c>--debug</c> is set. One block per rule decision
-/// and one block per model call: the sentence, the catalog that was offered, and the reply.
+/// and one block per template reading: the sentence, the catalog that was offered, and the reply.
 /// </summary>
 internal static class ModelDebug
 {
-    private const int ClipAt = 8000;
-
     public static void WriteRule(TextWriter writer, string? filePath, SourceSpan span, string phrase, string outcome)
     {
         writer.WriteLine($"debug: rule at {Where(filePath, span)}");
@@ -21,7 +18,7 @@ internal static class ModelDebug
 
     public static void WriteCall(TextWriter writer, string? filePath, SourceSpan span, ModelRequest request)
     {
-        writer.WriteLine($"debug: model read at {Where(filePath, span)}");
+        writer.WriteLine($"debug: template read at {Where(filePath, span)}");
         writer.WriteLine($"  text: {request.Text}");
         WriteList(writer, "subjects", request.Subjects);
         WriteList(writer, "rules", request.Rules);
@@ -30,20 +27,6 @@ internal static class ModelDebug
             record.Name + " {" + string.Join(", ", record.Fields.Select(field => $"{field.Name}: {field.TypeDescription}")) + "}"));
         WriteCatalog(writer, "types", request.Types);
         WriteCatalog(writer, "operations", request.Operations);
-    }
-
-    public static void WriteChatRequest(TextWriter writer, string url, string model, double temperature, string prompt)
-    {
-        writer.WriteLine(
-            $"  chat: POST {url} model={model} temperature={temperature.ToString(CultureInfo.InvariantCulture)}");
-        WriteBlock(writer, "chat prompt", prompt);
-    }
-
-    public static void WriteChatResponse(TextWriter writer, int status, string body, TimeSpan elapsed)
-    {
-        writer.WriteLine(
-            $"  chat response: {status} in {elapsed.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)}ms");
-        WriteBlock(writer, "chat body", body);
     }
 
     public static void WriteReading(TextWriter writer, ModelReading reading, TimeSpan elapsed)
@@ -111,15 +94,6 @@ internal static class ModelDebug
         writer.WriteLine(list.Count == 0 ? $"  {label}: (none)" : $"  {label}: {string.Join("; ", list)}");
     }
 
-    private static void WriteBlock(TextWriter writer, string label, string text)
-    {
-        writer.WriteLine($"  {label}:");
-        foreach (var line in Clip(Pretty(text)).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
-        {
-            writer.WriteLine("    " + line);
-        }
-    }
-
     private static string Describe(ModelSelection selection)
     {
         var subject = string.IsNullOrEmpty(selection.Subject) ? "" : $" ({selection.Subject})";
@@ -136,19 +110,4 @@ internal static class ModelDebug
         return file + span;
     }
 
-    private static string Pretty(string text)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(text);
-            return JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true });
-        }
-        catch (JsonException)
-        {
-            return text;
-        }
-    }
-
-    private static string Clip(string text) =>
-        text.Length <= ClipAt ? text : text[..ClipAt] + $"… ({text.Length - ClipAt} more characters)";
 }

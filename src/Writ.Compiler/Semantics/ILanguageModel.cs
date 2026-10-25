@@ -3,10 +3,10 @@ using Writ.Compiler.Diagnostics;
 namespace Writ.Compiler.Semantics;
 
 /// <summary>
-/// Reads a piece of text against a bounded catalog. The model may return one or more
+/// Reads a piece of text against a bounded catalog. The reader may return one or more
 /// catalog entries that the text represents or implies. It may not invent new ones.
 /// When the entries are operations, <see cref="ModelSelection.Order"/> is the order they run,
-/// after foibles such as "but first" have been put right. A specific rule overrides innate understanding.
+/// after foibles such as "but first" have been put right. A specific rule overrides the template index.
 /// </summary>
 public interface ILanguageModel
 {
@@ -61,7 +61,7 @@ public static class ModelReadings
             if (!allowed.Contains(selection.Id))
             {
                 diagnostics.Error("E2105",
-                    $"The model returned '{selection.Id}', which is not in the bounded list of operations and types.",
+                    $"The reading named '{selection.Id}', which is not in the bounded list of operations and types.",
                     filePath, span);
                 return null;
             }

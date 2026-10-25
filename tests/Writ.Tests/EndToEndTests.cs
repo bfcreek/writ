@@ -9,7 +9,7 @@ public class EndToEndTests
     [Fact]
     public void CalculateTotal_compiles_and_runs()
     {
-        var path = SamplePath("calculate-total.writ");
+        var path = SamplePath(Path.Combine("basics", "calculate-total.writ"));
         var source = File.ReadAllText(path);
         var pipeline = new CompilationPipeline();
         var result = pipeline.Compile(source, path);
@@ -18,7 +18,7 @@ public class EndToEndTests
         Assert.False(string.IsNullOrWhiteSpace(result.GeneratedPowerShell));
         Assert.Contains("CalculateTotal", result.GeneratedPowerShell!);
 
-        var input = File.ReadAllText(SamplePath("input-calculate-total.json"));
+        var input = File.ReadAllText(SamplePath(Path.Combine("basics", "input-calculate-total.json")));
         var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "calculate-total", "CalculateTotal", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(27.54m, Assert.IsType<decimal>(exec.Value));
@@ -27,12 +27,12 @@ public class EndToEndTests
     [Fact]
     public void FizzBuzz_loop_compiles_and_runs()
     {
-        var path = SamplePath("fizzbuzz-loop.writ");
+        var path = SamplePath(Path.Combine("basics", "fizzbuzz-loop.writ"));
         var source = File.ReadAllText(path);
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
-        var input = File.ReadAllText(SamplePath("input-fizzbuzz.json"));
+        var input = File.ReadAllText(SamplePath(Path.Combine("basics", "input-fizzbuzz.json")));
         var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "fizzbuzz-loop", "ClassifyAll", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
 
@@ -43,7 +43,7 @@ public class EndToEndTests
     [Fact]
     public void Compile_emits_ir_json()
     {
-        var path = SamplePath("fizzbuzz.writ");
+        var path = SamplePath(Path.Combine("basics", "fizzbuzz.writ"));
         var source = File.ReadAllText(path);
         var pipeline = new CompilationPipeline();
         var result = pipeline.Compile(source, path);
@@ -57,7 +57,7 @@ public class EndToEndTests
     [Fact]
     public void Codegen_snapshot_contains_stable_shapes()
     {
-        var path = SamplePath("fizzbuzz.writ");
+        var path = SamplePath(Path.Combine("basics", "fizzbuzz.writ"));
         var source = File.ReadAllText(path);
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));

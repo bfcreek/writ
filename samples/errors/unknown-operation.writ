@@ -1,4 +1,4 @@
-Use payments from "../payments.capability.json"
+Use payments from "../payments/payments.capability.json"
 
 To Broken, given a day which is a string, returning an integer
     the failures are ask payments to refund with the day

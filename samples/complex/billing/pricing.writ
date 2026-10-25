@@ -1,0 +1,17 @@
+# Line totals and a tax rate chosen from the region.
+
+An Line has a sku which is a string, a price which is a decimal, and a quantity which is an integer
+
+An Invoice has a region which is a string and lines which are a list of Line
+
+To LineTotal, given a line which is a Line, returning a decimal
+    return the price of the line times the quantity of the line
+
+To TaxRate, given a region which is a string, returning a decimal
+    the rate is 0.05
+    switch on the region
+        when "east"
+            the rate is 0.08
+        when "west"
+            the rate is 0.07
+    return the rate

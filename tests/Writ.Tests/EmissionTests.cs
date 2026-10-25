@@ -13,7 +13,7 @@ public class EmissionTests
     [Fact]
     public void Without_constraints_the_default_emission_is_a_powershell_script()
     {
-        var path = TestPaths.Sample("calculate-total.writ");
+        var path = TestPaths.Sample(Path.Combine("basics", "calculate-total.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
@@ -46,7 +46,7 @@ public class EmissionTests
     [Fact]
     public void A_cmdlet_program_emits_a_powershell_script()
     {
-        var path = TestPaths.Sample("folder-report.writ");
+        var path = TestPaths.Sample(Path.Combine("files", "folder-report.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
@@ -186,7 +186,7 @@ public class EmissionTests
     [Fact]
     public void Frozen_lock_catches_an_emission_change_and_accepts_a_lock_that_never_recorded_one()
     {
-        var path = TestPaths.Sample("innate-total.writ");
+        var path = TestPaths.Sample(Path.Combine("basics", "innate-total.writ"));
         var source = File.ReadAllText(path);
         var pipeline = new CompilationPipeline();
         var plain = pipeline.Compile(source, path);

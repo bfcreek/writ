@@ -257,6 +257,108 @@ public class ConstructTests
     }
 
     [Fact]
+    public void A_paragraph_can_describe_a_loop_and_pronouns_point_at_it()
+    {
+        var total = Run("""
+            To Total, returning an integer
+                the total is 0
+                for each number from 1 to 3, add it to the total
+                return it
+            """, "Total");
+        Assert.Equal(6L, total);
+
+        var skipped = Run("""
+            To Total, returning an integer
+                the total is 0
+                for each number from 1 to 4, add it to the total. If it is 2, skip it.
+                return the total
+            """, "Total");
+        Assert.Equal(10L, skipped);
+
+        var otherwise = Run("""
+            To Total, returning an integer
+                the total is 0.
+                for each number from 1 to 4, if it is 2, skip it, otherwise add it to the total.
+                return the total
+            """, "Total");
+        Assert.Equal(8L, otherwise);
+
+        var lengths = Run("""
+            To Total, returning an integer
+                the files are a list containing "a" and "bb"
+                the total is 0
+                for each file in the files, add its length to the total
+                return the total
+            """, "Total");
+        Assert.Equal(3L, lengths);
+
+        var them = Run("""
+            To Tally, returning an integer
+                the files are a list containing "a" and "bb"
+                return the count of them
+            """, "Tally");
+        Assert.Equal(2L, them);
+
+        var kept = Run("""
+            To Tally, returning an integer
+                the tally is 0
+                keep increasing it until it is 3
+                return it
+            """, "Tally");
+        Assert.Equal(3L, kept);
+
+        var latest = Run("""
+            To Latest, returning an integer
+                the total is 0
+                the tally is 1
+                return it
+            """, "Latest");
+        Assert.Equal(1L, latest);
+    }
+
+    [Fact]
+    public void A_keyword_can_be_a_name()
+    {
+        var summed = Run("""
+            To Run, returning an integer
+                return Count with 3
+            To Count, given a which which is an integer, returning an integer
+                the sum is 0
+                the length is the which
+                for each first from 1 to the length, add the first to the sum
+                return the sum
+            """, "Run");
+        Assert.Equal(6L, summed);
+
+        var measured = Run("""
+            To Letters, returning an integer
+                the string is "ab"
+                the count is the length of the string
+                return the count
+            """, "Letters");
+        Assert.Equal(2L, measured);
+
+        var taken = Run("""
+            To Kept, returning an integer
+                the numbers are a list containing 4, 5 and 6
+                the kept are the first 2 of the numbers
+                return the count of the kept
+            """, "Kept");
+        Assert.Equal(2L, taken);
+    }
+
+    [Fact]
+    public void A_pronoun_with_nothing_to_point_at_is_an_error()
+    {
+        var result = Compile("""
+            To Broken, returning an integer
+                return it
+            """);
+        Assert.False(result.Success);
+        Assert.Contains(result.Diagnostics, d => d.Code == "E2032");
+    }
+
+    [Fact]
     public void Break_outside_a_loop_is_an_error()
     {
         var result = Compile("""

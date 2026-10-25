@@ -1,0 +1,37 @@
+# Clear, warn, note, and pause live here. ClearScreen is not called: a non-interactive host rejects it.
+# AskName is the prompt sentence. Running does not wait for a person.
+# Running returns 5.
+
+To ClearScreen, returning nothing
+    clear the screen
+
+To AskName, returning a string
+    the name is ask the user for "Your name"
+    return the name
+
+To Fail, returning an integer
+    stop with "failed"
+    return 0
+
+When run, returning an integer
+    note "host sample"
+    warn "host sample"
+    delay 1 ms
+    say "host"
+    the saved is the current folder
+    the folder is the temp folder
+    go to the folder
+    go to the saved
+    the score is 0
+    if the length of the home folder is greater than 0
+        increase the score
+    if the length of the temp folder is greater than 0
+        increase the score
+    if the length of the current folder is greater than 0
+        increase the score
+    if the length of the script folder is greater than 0
+        increase the score
+    the user is the environment variable USERNAME
+    if the length of the user is greater than 0
+        increase the score
+    return the score

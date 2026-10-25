@@ -1,0 +1,8 @@
+{
+  "region": "east",
+  "lines": [
+    { "sku": "pen", "price": 2.50, "quantity": 4 },
+    { "sku": "ink", "price": 8.00, "quantity": 0 },
+    { "sku": "pad", "price": 3.25, "quantity": 2 }
+  ]
+}

@@ -24,7 +24,6 @@ public sealed class CompilationPipeline
     private readonly ISemanticResolver _semanticResolver;
     private readonly ICapabilityLoader _capabilities;
     private readonly ILanguageModel _model;
-    private readonly bool _modelWasSupplied;
     private readonly CmdletCatalog _cmdlets;
 
     public CompilationPipeline(
@@ -35,7 +34,6 @@ public sealed class CompilationPipeline
     {
         _semanticResolver = semanticResolver ?? new RuleBasedSemanticResolver();
         _capabilities = capabilities ?? new FileCapabilityLoader();
-        _modelWasSupplied = model is not null;
         _model = model ?? new InnateLanguageModel();
         _cmdlets = cmdlets ?? CmdletCatalog.Default;
     }
@@ -50,21 +48,9 @@ public sealed class CompilationPipeline
         var diagnostics = new DiagnosticBag();
         var name = moduleName ?? Path.GetFileNameWithoutExtension(filePath);
         var languageModel = _model;
-        ModelChoice? choice = null;
-        if (!_modelWasSupplied)
-        {
-            var resolved = ModelSetup.Resolve(filePath, model ?? ModelOptions.ProjectOnly, diagnostics);
-            if (resolved is null)
-            {
-                return CompilationResult.Failed(diagnostics.Items);
-            }
-
-            languageModel = resolved.Model;
-            choice = resolved.Choice;
-        }
 
         CompilationResult Finish(CompilationResult result, Binder? binder = null) =>
-            (binder is null ? result : WithBinding(result, binder)) with { Model = choice };
+            binder is null ? result : WithBinding(result, binder);
 
         var lexer = new Lexer(source, filePath, diagnostics);
         var tokens = lexer.Tokenize();
@@ -84,14 +70,6 @@ public sealed class CompilationPipeline
         if (diagnostics.HasErrors)
         {
             return Finish(new CompilationResult(false, diagnostics.Items, ast, null, null));
-        }
-
-        if (model?.Debug is not null && choice is not null)
-        {
-            var named = string.IsNullOrEmpty(choice.Model) ? choice.Provider : $"{choice.Provider} {choice.Model}";
-            var profile = string.IsNullOrEmpty(choice.Profile) ? "" : $" ({choice.Profile})";
-            var from = choice.Source == "built-in" ? "built-in" : Path.GetFileName(choice.Source);
-            model.Debug.WriteLine($"debug: using {named}{profile} from {from}");
         }
 
         var binder = new Binder(filePath, diagnostics, _semanticResolver, _capabilities, languageModel, _cmdlets, model?.Debug);

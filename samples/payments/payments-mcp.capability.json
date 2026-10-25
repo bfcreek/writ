@@ -1,6 +1,6 @@
 {
   "versionHash": "sha256:payments-mcp-demo",
-  "provider": { "kind": "mcp", "command": "pwsh -NoProfile -NonInteractive -File ../tools/mcp-test-server.ps1" },
+  "provider": { "kind": "mcp", "command": "pwsh -NoProfile -NonInteractive -File ../../tools/mcp-test-server.ps1" },
   "grantedEffects": ["external-read", "external-write"],
   "allowedOperations": ["list_failed", "retry"],
   "types": [

@@ -35,7 +35,7 @@ public class McpTests
         Environment.SetEnvironmentVariable("INTENT_MCP_LOG", log);
         try
         {
-            var path = TestPaths.Sample("mcp-payments.writ");
+            var path = TestPaths.Sample(Path.Combine("payments", "mcp-payments.writ"));
             var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
             Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
@@ -58,7 +58,7 @@ public class McpTests
     [Fact]
     public void Direct_mcp_program_runs()
     {
-        var path = TestPaths.Sample("mcp-payments.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "mcp-payments.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var input = """{ "day": "2026-10-20" }""";
@@ -72,7 +72,7 @@ public class McpTests
     [Fact]
     public void Manifest_backed_mcp_is_typed_and_runs()
     {
-        var path = TestPaths.Sample("recover-failures-mcp.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "recover-failures-mcp.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var capability = Assert.Single(result.Capabilities);
@@ -91,8 +91,8 @@ public class McpTests
         Directory.CreateDirectory(folder);
         try
         {
-            var manifest = File.ReadAllText(TestPaths.Sample("payments-mcp.capability.json"))
-                .Replace("../tools/mcp-test-server.ps1", Path.Combine(TestPaths.RepoRoot(), "tools", "mcp-test-server.ps1").Replace('\\', '/'))
+            var manifest = File.ReadAllText(TestPaths.Sample(Path.Combine("payments", "payments-mcp.capability.json")))
+                .Replace("../../tools/mcp-test-server.ps1", Path.Combine(TestPaths.RepoRoot(), "tools", "mcp-test-server.ps1").Replace('\\', '/'))
                 .Replace("\"name\": \"retry\"", "\"name\": \"refund\"")
                 .Replace("\"list_failed\", \"retry\"", "\"list_failed\", \"refund\"");
             File.WriteAllText(Path.Combine(folder, "p.capability.json"), manifest);
@@ -116,7 +116,7 @@ public class McpTests
     [Fact]
     public void Lockfile_pins_the_tool_list_and_flags_drift()
     {
-        var path = TestPaths.Sample("mcp-payments.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "mcp-payments.writ"));
         var source = File.ReadAllText(path);
         var pipeline = new CompilationPipeline();
         var result = pipeline.Compile(source, path);

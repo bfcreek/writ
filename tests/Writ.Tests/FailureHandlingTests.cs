@@ -9,7 +9,7 @@ public class FailureHandlingTests
     [Fact]
     public void Try_if_that_fails_finally_binds_and_runs()
     {
-        var path = TestPaths.Sample("careful-retry.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "careful-retry.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
@@ -31,7 +31,7 @@ public class FailureHandlingTests
     [Fact]
     public void Failure_handler_sees_the_error_message()
     {
-        var path = TestPaths.Sample("careful-retry.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "careful-retry.writ"));
         var source = File.ReadAllText(path).Replace("payments.capability.json", "payments-flaky.capability.json");
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
@@ -46,7 +46,7 @@ public class FailureHandlingTests
     [Fact]
     public void Unhandled_capability_failure_is_structured()
     {
-        var path = TestPaths.Sample("recover-failures.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "recover-failures.writ"));
         var source = File.ReadAllText(path).Replace("payments.capability.json", "payments-flaky.capability.json");
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
@@ -69,7 +69,7 @@ public class FailureHandlingTests
     [Fact]
     public void Dry_run_describes_writes_instead_of_performing_them()
     {
-        var path = TestPaths.Sample("careful-retry.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "careful-retry.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 

@@ -1,0 +1,54 @@
+# Types, parameters, methods, modules, and the blocks PowerShell names begin, process, and end.
+# Running returns 3. OpenNotepad and the other functions below are not called.
+using the namespace System.Text
+export the function Hello
+Allow running scripts
+
+An enumeration Color of red, green and blue
+
+An Widget has
+    a value which is an integer
+    To Double, returning an integer
+        return the value times 2
+
+To filter Keep, given n which is an integer, returning a boolean
+    return the n is equal to 1
+
+To command Bound, given a name which is a string defaulting to "Ada" from the pipeline also called title one of "Ada" and "Bea" matching "^A" with length from 1 to 4 allowing nothing rejecting empty, and a total which is an integer from 1 to 9 passing the test the total is greater than 0, returning nothing
+    before
+        the ready is "yes"
+    on each
+        the seen is the name
+    after
+        the done is "yes"
+    when binding parameters
+        the extra is "yes"
+
+To Shapes, given a map which is a dictionary of string to integer and cells which are a grid of integer and a slot which is a reference to integer, returning an integer
+    the board is a grid of 2 by 3 integers
+    return 1
+
+To Hello, returning a string
+    return "ok"
+
+To Stop, returning an integer
+    exit the process with 2
+    return 0
+
+To Sourced, returning an integer
+    source the script "missing.ps1"
+    remove the module "Missing"
+    redirect the errors of "x" to the output
+    return 1
+
+When run, returning an integer
+    import the module "Microsoft.PowerShell.Utility"
+    the answer is fixed at 3
+    the board is a grid of 2 by 3 integers
+    the person is a table of name set to "Ada" and age set to 4
+    trap errors
+        return 0
+    redirect the output of "hello" to nothing
+    if whether it succeeded and the age of the person is equal to 4
+        return the answer
+    return 0

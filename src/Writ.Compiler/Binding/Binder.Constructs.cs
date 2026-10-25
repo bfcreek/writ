@@ -8,6 +8,85 @@ namespace Writ.Compiler.Binding;
 public sealed partial class Binder
 {
     private int _loopDepth;
+    private readonly List<Referent> _discourse = [];
+    private readonly List<int> _frames = [];
+
+    private readonly record struct Referent(string Name, IrType Type, bool Plural);
+
+    private void PushDiscourse() => _frames.Add(_discourse.Count);
+
+    private void PopDiscourse()
+    {
+        var start = _frames[^1];
+        _frames.RemoveAt(_frames.Count - 1);
+        if (_discourse.Count > start)
+        {
+            _discourse.RemoveRange(start, _discourse.Count - start);
+        }
+    }
+
+    private void Mention(string name, IrType type, bool? plural = null)
+    {
+        if (IsPronoun(name))
+        {
+            return;
+        }
+
+        var isPlural = plural ?? type is IrListType;
+        var start = _frames.Count == 0 ? 0 : _frames[^1];
+        for (var i = _discourse.Count - 1; i >= start; i--)
+        {
+            if (_discourse[i].Name == name)
+            {
+                _discourse.RemoveAt(i);
+            }
+        }
+
+        _discourse.Add(new Referent(name, type, isPlural));
+    }
+
+    private static bool IsPronoun(string name) =>
+        name is "it" or "its" or "they" or "them" or "their";
+
+    private static bool PronounIsPlural(string name) => name is "they" or "them" or "their";
+
+    private IrNode ResolvePronoun(string name, SourceSpan span)
+    {
+        if (name is "its" or "their")
+        {
+            _diagnostics.Error("E2032", $"'{name}' needs a noun after it, as in '{name} length'.", _filePath, span);
+            return new IrLiteral(null, span, IrErrorType.Instance);
+        }
+
+        var plural = PronounIsPlural(name);
+        for (var i = _discourse.Count - 1; i >= 0; i--)
+        {
+            if (_discourse[i].Plural == plural)
+            {
+                var referent = _discourse[i];
+                return new IrVar(referent.Name, span, referent.Type);
+            }
+        }
+
+        var word = plural ? "them" : "it";
+        _diagnostics.Error("E2032", $"Nothing for '{name}' to refer to. Name the {word} value first.", _filePath, span);
+        return new IrLiteral(null, span, IrErrorType.Instance);
+    }
+
+    private string ResolveAssignName(string name, SourceSpan span)
+    {
+        if (!IsPronoun(name))
+        {
+            return name;
+        }
+
+        if (ResolvePronoun(name, span) is IrVar variable)
+        {
+            return variable.Name;
+        }
+
+        return name;
+    }
     private IrRecordType? _methodFields;
 
     private IrParameter ToParameter(ParameterAst parameter) =>
@@ -34,33 +113,42 @@ public sealed partial class Binder
     private IrFunction BindFunctionBody(FunctionAst fn, FunctionSignature sig)
     {
         var scope = new Scope(null);
+        PushDiscourse();
         var parameters = new List<IrParameter>();
-        for (var i = 0; i < sig.Parameters.Count; i++)
+        try
         {
-            var ir = sig.Parameters[i];
-            scope.Define(ir.Name, ir.Type, fn.Span, _diagnostics, _filePath);
-            if (i < fn.Parameters.Count && fn.Parameters[i].Default is { } fallback)
+            for (var i = 0; i < sig.Parameters.Count; i++)
             {
-                ir = ir with { Default = BindExpression(fallback, scope) };
+                var ir = sig.Parameters[i];
+                scope.Define(ir.Name, ir.Type, fn.Span, _diagnostics, _filePath);
+                Mention(ir.Name, ir.Type);
+                if (i < fn.Parameters.Count && fn.Parameters[i].Default is { } fallback)
+                {
+                    ir = ir with { Default = BindExpression(fallback, scope) };
+                }
+
+                if (i < fn.Parameters.Count && fn.Parameters[i].ValidateTest is { } test)
+                {
+                    ir = ir with { ValidateTest = BindExpression(test, scope) };
+                }
+
+                parameters.Add(ir);
             }
 
-            if (i < fn.Parameters.Count && fn.Parameters[i].ValidateTest is { } test)
+            var body = fn.Body.Select(s => BindStatement(s, scope, sig.ReturnType)).ToList();
+            body = RefineEmptyListDeclarations(body, scope);
+            return new IrFunction(fn.Name, parameters, sig.ReturnType, body, fn.Span, sig.ReturnType)
             {
-                ir = ir with { ValidateTest = BindExpression(test, scope) };
-            }
-
-            parameters.Add(ir);
+                IsEntry = fn.IsEntry,
+                SourceFile = fn.SourceFile,
+                IsFilter = fn.IsFilter,
+                CmdletBinding = fn.CmdletBinding
+            };
         }
-
-        var body = fn.Body.Select(s => BindStatement(s, scope, sig.ReturnType)).ToList();
-        body = RefineEmptyListDeclarations(body, scope);
-        return new IrFunction(fn.Name, parameters, sig.ReturnType, body, fn.Span, sig.ReturnType)
+        finally
         {
-            IsEntry = fn.IsEntry,
-            SourceFile = fn.SourceFile,
-            IsFilter = fn.IsFilter,
-            CmdletBinding = fn.CmdletBinding
-        };
+            PopDiscourse();
+        }
     }
 
     private IrFunction BindMethod(FunctionAst fn, IrRecordType type)
@@ -104,9 +192,11 @@ public sealed partial class Binder
     {
         var condition = BindCondition(stmt.Condition, scope);
         var bodyScope = new Scope(scope);
+        PushDiscourse();
         _loopDepth++;
         var body = stmt.Body.Select(s => BindStatement(s, bodyScope, returnType)).ToList();
         _loopDepth--;
+        PopDiscourse();
         return new IrDo(condition, body, stmt.Until, stmt.Span, IrVoidType.Instance);
     }
 
@@ -120,9 +210,12 @@ public sealed partial class Binder
         }
 
         var bodyScope = new Scope(scope);
+        PushDiscourse();
+        Mention(stmt.Name, IrPrimitiveType.Integer, plural: false);
         _loopDepth++;
         var body = stmt.Body.Select(s => BindStatement(s, bodyScope, returnType)).ToList();
         _loopDepth--;
+        PopDiscourse();
         return new IrFor(stmt.Name, from, to, body, stmt.Span, IrVoidType.Instance);
     }
 

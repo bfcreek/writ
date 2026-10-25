@@ -11,7 +11,7 @@ public class CapabilityTests
     public void Mock_payment_recovery_runs_without_compiling_invocations()
     {
         var loader = new FileCapabilityLoader();
-        var path = SamplePath("recover-failures.writ");
+        var path = SamplePath(Path.Combine("payments", "recover-failures.writ"));
         var result = new CompilationPipeline(capabilities: loader).Compile(File.ReadAllText(path), path);
 
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
@@ -22,7 +22,7 @@ public class CapabilityTests
             result.GeneratedPowerShell!,
             "recover-failures",
             "RecoverFailures",
-            File.ReadAllText(SamplePath("input-recover.json")));
+            File.ReadAllText(SamplePath(Path.Combine("payments", "input-recover.json"))));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(1L, Convert.ToInt64(exec.Value));
         Assert.Equal(2, exec.CapabilityCalls);

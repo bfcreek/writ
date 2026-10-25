@@ -1,0 +1,54 @@
+# Create a catalog under the temp folder, back it up, read it as CSV, then remove it.
+# Running returns 6.
+Allow reading files and writing files
+
+An Item has a sku which is a string and a quantity which is an integer
+
+When run, returning an integer
+    the score is 0
+    the folder is the combined path of the temp folder and "writ-sample-workshop"
+    if the folder exists
+        remove the folder and everything in it
+    create the folder
+    the file is the combined path of the folder and "catalog.csv"
+    the text is "sku,quantity"
+    save the text into the file
+    the line is "pen,4"
+    add the line to the file
+    the line is "pad,2"
+    add the line to the file
+    the scratch is the combined path of the folder and "scratch.txt"
+    the text is "temp"
+    save the text into the scratch
+    the moved is the combined path of the folder and "scratch-moved.txt"
+    move the scratch to the moved
+    the destination is the combined path of the folder and "catalog-backup.csv"
+    copy the file to the destination
+    the newname is "catalog-final.csv"
+    rename the destination to the newname
+    the path is the combined path of the folder and the newname
+    the parent is the parent folder of the path
+    the leaf is the file name of the path
+    if the leaf is equal to "catalog-final.csv"
+        increase the score
+    if the length of the parent is greater than 0
+        increase the score
+    the full is the full path of the path
+    the shown is the full as a string
+    if the length of the shown is greater than 0
+        increase the score
+    the body is the contents of the file at the path
+    if the body matches "pen"
+        increase the score
+    the data is the body as CSV
+    the items are the data as a list of Item
+    the pens are the items where the sku is equal to "pen"
+    if the count of the items is equal to 2 and the count of the pens is equal to 1
+        increase the score
+    say "Catalog {the leaf} has {the count of the items} items"
+    remove the folder and everything in it
+    if the folder exists
+        warn "The workshop folder is still there"
+    otherwise
+        increase the score
+    return the score

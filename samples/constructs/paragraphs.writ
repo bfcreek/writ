@@ -1,0 +1,49 @@
+# A loop can be one sentence. it is the latest value. them is the latest list.
+# Each example is its own function so the sentence ends with the function.
+# Running returns 6.
+
+To Added, given a start which is an integer, returning an integer
+    the total is the start
+    for each number from 1 to 3, add it to the total
+    return it
+
+To Skipped, given a start which is an integer, returning an integer
+    the total is the start
+    for each number from 1 to 4, add it to the total. If it is 2, skip it.
+    return the total
+
+To OtherwiseAdded, given a start which is an integer, returning an integer
+    the total is the start
+    for each number from 1 to 4, if it is 2, skip it, otherwise add it to the total.
+    return the total
+
+To Lengths, given a start which is an integer, returning an integer
+    the notes are a list containing "a" and "bb"
+    the total is the start
+    for each note in the notes, add its length to the total
+    return the total
+
+To Listed, given a start which is an integer, returning an integer
+    the notes are a list containing "a" and "bb"
+    return the count of them plus the start
+
+To Kept, given a start which is an integer, returning an integer
+    the tally is the start
+    keep increasing it until it is 3
+    return it
+
+When run, returning an integer
+    the score is 0
+    if (Added with 0) is equal to 6
+        increase the score
+    if (Skipped with 0) is equal to 10
+        increase the score
+    if (OtherwiseAdded with 0) is equal to 8
+        increase the score
+    if (Lengths with 0) is equal to 3
+        increase the score
+    if (Listed with 0) is equal to 2
+        increase the score
+    if (Kept with 0) is equal to 3
+        increase the score
+    give back the score

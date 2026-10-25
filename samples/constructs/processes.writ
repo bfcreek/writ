@@ -1,0 +1,25 @@
+# Programs, processes, and services.
+# Running this script does not start or stop anything. The functions are the sentences.
+Allow changing processes
+
+To OpenNotepad, returning nothing
+    open the program "notepad.exe"
+
+To StopNotepad, returning nothing
+    the process is "notepad"
+    stop the process
+
+To StartSpooler, returning nothing
+    the service is "spooler"
+    start the service
+
+To StopSpooler, returning nothing
+    the service is "spooler"
+    stop the service
+
+To RestartSpooler, returning nothing
+    the service is "spooler"
+    restart the service
+
+When run, returning an integer
+    return 1

@@ -1,0 +1,94 @@
+# Arithmetic, comparisons, text, lists, tables, and the other expression forms.
+# Running returns 37.
+
+To Greet, given a name which is a string and an age which is an integer, returning a string
+    return the name
+
+When run, returning an integer
+    the score is 0
+    if (2 plus 3) is equal to 5
+        increase the score
+    if (8 divided by 2) is equal to 4
+        increase the score
+    if (7 modulo 3) is equal to 1
+        increase the score
+    if 3 is greater than 2 and 2 is less than 3
+        increase the score
+    if 3 is at least 3 and 3 is at most 3
+        increase the score
+    if not (1 is equal to 2)
+        increase the score
+    if "Ada" is like "A*" and "Ada" is not like "B*"
+        increase the score
+    if "abc" matches "a.*" and "abc" does not match "z"
+        increase the score
+    if (a list containing 1 and 2) contains 1 and (a list containing 1 and 2) does not contain 9
+        increase the score
+    if 2 is in a list containing 1 and 2 and 9 is not in a list containing 1 and 2
+        increase the score
+    if nothing is nothing and 1 is not nothing
+        increase the score
+    if "4" is a string and 4 is an integer
+        increase the score
+    if (6 bitwise and 3) is equal to 2 and (1 shifted left by 3) is equal to 8
+        increase the score
+    if (bitwise not 0) is equal to -1
+        increase the score
+    if 1 is equal to 1 xor 1 is equal to 2
+        increase the score
+    if (1 when 2 is equal to 2 otherwise 0) is equal to 1
+        increase the score
+    if (nothing otherwise 7) is equal to 7
+        increase the score
+    if 1 is equal to 1 and then 2 is equal to 2
+        increase the score
+    # or else follows the command: a false value still succeeded, so the rest does not run
+    the chosen is (1 is equal to 0 or else 1 is equal to 1)
+    if the chosen is equal to false
+        increase the score
+    if ("ab" times 3) is equal to "ababab"
+        increase the score
+    if (the length of ("a,b" split on ",")) is equal to 2
+        increase the score
+    the letters are a list containing "a" and "b"
+    if (the letters joined by "-") is equal to "a-b"
+        increase the score
+    if ("a-b" replacing "-" with "") is equal to "ab"
+        increase the score
+    the pattern is "{" plus "0" plus "}" plus "-" plus "{" plus "1" plus "}"
+    if (the pattern formatted with "a" and "b") is equal to "a-b"
+        increase the score
+    if (the item at 0 of a list containing 4 and 5) is equal to 4
+        increase the score
+    if (the last item of a list containing 4 and 5) is equal to 5
+        increase the score
+    if (the count of (1 through 3)) is equal to 3
+        increase the score
+    if ("ab" calling ToUpper) is equal to "AB"
+        increase the score
+    if (the character "A" calling ToString) is equal to "A"
+        increase the score
+    if ("4" as an integer if possible) is equal to 4
+        increase the score
+    if 1 kb is equal to 1024
+        increase the score
+    the person is a table of name set to "Ada" and age set to 4
+    if the age of the person is equal to 4
+        increase the score
+    the options are a table of name set to "Ada" and age set to 4
+    if (Greet with the options spread) is equal to "Ada"
+        increase the score
+    the numbers are a list containing 4, 5 and 6
+    the kept are the first 2 of the numbers
+    if the count of the kept is equal to 2
+        increase the score
+    the amounts are a list containing 1.5 and 2.5
+    the more are the amounts with 1.0 added
+    if (the count of the more) is equal to 3 and (the sum of the amounts) is equal to 4.0
+        increase the score
+    the empty are an empty list
+    if the count of the empty is equal to 0
+        increase the score
+    if (the count of (1 through 3 piped to a block of the pipeline item)) is equal to 3
+        increase the score
+    return the score

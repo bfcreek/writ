@@ -9,7 +9,7 @@ public class CommandTests
     [Fact]
     public void Folder_report_binds_cmdlets_and_runs()
     {
-        var path = TestPaths.Sample("folder-report.writ");
+        var path = TestPaths.Sample(Path.Combine("files", "folder-report.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
@@ -27,7 +27,7 @@ public class CommandTests
         Assert.Contains("Sort-Object -Property 'length' -Descending", script);
         Assert.Contains("Select-Object -First 3L", script);
 
-        var folder = Path.Combine(TestPaths.RepoRoot(), "samples");
+        var folder = Path.Combine(TestPaths.RepoRoot(), "samples", "files");
         var input = System.Text.Json.JsonSerializer.Serialize(new { folder });
         var exec = new PowerShellExecutor().Execute(script, "folder-report", "Report", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
@@ -77,7 +77,7 @@ public class CommandTests
     }
 
     [Theory]
-    [InlineData("countdown.writ", "Countdown", "input-countdown.json")]
+    [InlineData("basics/countdown.writ", "Countdown", "basics/input-countdown.json")]
     public void While_and_say_run(string sample, string entry, string inputFile)
     {
         var path = TestPaths.Sample(sample);

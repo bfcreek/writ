@@ -32,30 +32,23 @@ var targetOption = new Option<string?>("--target")
 
 var frozenOption = new Option<bool>("--frozen")
 {
-    Description = "Fail unless the lockfile matches exactly (source, compiler, tools, model readings)"
-};
-
-var modelOption = new Option<string?>("--model")
-{
-    Description = "Model profile in writ.model.json or ~/.writ/model.json. The file's \"use\" applies when this is omitted"
+    Description = "Fail unless the lockfile matches exactly (source, compiler, tools, template readings)"
 };
 
 var debugOption = new Option<bool>("--debug")
 {
-    Description = "Write each rule decision and each model call to standard error: the sentence, the catalog offered, and the reply"
+    Description = "Write each rule decision and each template reading to standard error: the sentence, the catalog offered, and the reply"
 };
 
 var checkCommand = new Command("check", "Parse, bind, and validate an Writ program")
 {
     fileArgument,
     frozenOption,
-    modelOption,
     debugOption
 };
 checkCommand.SetAction(parseResult => RunCheck(
     parseResult.GetValue(fileArgument)!,
     parseResult.GetValue(frozenOption),
-    parseResult.GetValue(modelOption),
     parseResult.GetValue(debugOption)));
 
 var compileCommand = new Command("compile", "Compile an Writ program. Constraints choose the emission, unless --target forces one")
@@ -64,7 +57,6 @@ var compileCommand = new Command("compile", "Compile an Writ program. Constraint
     outOption,
     targetOption,
     frozenOption,
-    modelOption,
     debugOption
 };
 compileCommand.SetAction(parseResult => RunCompile(
@@ -72,7 +64,6 @@ compileCommand.SetAction(parseResult => RunCompile(
     parseResult.GetValue(outOption),
     parseResult.GetValue(targetOption)!,
     parseResult.GetValue(frozenOption),
-    parseResult.GetValue(modelOption),
     parseResult.GetValue(debugOption)));
 
 var dryRunOption = new Option<bool>("--dry-run")
@@ -87,7 +78,6 @@ var runCommand = new Command("run", "Compile and execute an Writ program")
     inputOption,
     targetOption,
     dryRunOption,
-    modelOption,
     debugOption
 };
 runCommand.SetAction(parseResult => RunExecute(
@@ -96,29 +86,24 @@ runCommand.SetAction(parseResult => RunExecute(
     parseResult.GetValue(inputOption),
     parseResult.GetValue(targetOption)!,
     parseResult.GetValue(dryRunOption),
-    parseResult.GetValue(modelOption),
     parseResult.GetValue(debugOption)));
 
 var lockCommand = new Command("lock", "Write or refresh the lockfile for a program (accepts changed tools)")
 {
     fileArgument,
-    modelOption,
     debugOption
 };
 lockCommand.SetAction(parseResult => RunLock(
     parseResult.GetValue(fileArgument)!,
-    parseResult.GetValue(modelOption),
     parseResult.GetValue(debugOption)));
 
 var toolsListCommand = new Command("list", "List the capabilities, operations, and granted permissions a program can use")
 {
     fileArgument,
-    modelOption,
     debugOption
 };
 toolsListCommand.SetAction(parseResult => RunToolsList(
     parseResult.GetValue(fileArgument)!,
-    parseResult.GetValue(modelOption),
     parseResult.GetValue(debugOption)));
 
 var operationArgument = new Argument<string>("operation") { Description = "alias.operation or pwsh.Cmdlet-Name" };
@@ -126,13 +111,11 @@ var toolsInspectCommand = new Command("inspect", "Show one operation: arguments,
 {
     fileArgument,
     operationArgument,
-    modelOption,
     debugOption
 };
 toolsInspectCommand.SetAction(parseResult => RunToolsInspect(
     parseResult.GetValue(fileArgument)!,
     parseResult.GetValue(operationArgument)!,
-    parseResult.GetValue(modelOption),
     parseResult.GetValue(debugOption)));
 
 var toolsCommand = new Command("tools", "Discover the tools a program binds to (never invokes them)")
@@ -141,26 +124,22 @@ var toolsCommand = new Command("tools", "Discover the tools a program binds to (
     toolsInspectCommand
 };
 
-var explainCommand = new Command("explain", "Show what each sentence bound to: tools, effects, model readings")
+var explainCommand = new Command("explain", "Show what each sentence bound to: tools, effects, template readings")
 {
     fileArgument,
-    modelOption,
     debugOption
 };
 explainCommand.SetAction(parseResult => RunExplain(
     parseResult.GetValue(fileArgument)!,
-    parseResult.GetValue(modelOption),
     parseResult.GetValue(debugOption)));
 
 var diffCommand = new Command("diff", "Show semantic changes between the lockfile and the program as it binds now")
 {
     fileArgument,
-    modelOption,
     debugOption
 };
 diffCommand.SetAction(parseResult => RunDiff(
     parseResult.GetValue(fileArgument)!,
-    parseResult.GetValue(modelOption),
     parseResult.GetValue(debugOption)));
 
 var root = new RootCommand("Writ compiler - English source to typed operations")
@@ -211,21 +190,20 @@ static CompilationResult? CompileFile(FileInfo file, CompilationPipeline pipelin
     return result;
 }
 
-static int RunCheck(FileInfo file, bool frozen, string? model, bool debug)
+static int RunCheck(FileInfo file, bool frozen, bool debug)
 {
-    var result = CompileFile(file, new CompilationPipeline(), frozen, writeLock: false, AutoEmission(), AutoModel(model, debug));
+    var result = CompileFile(file, new CompilationPipeline(), frozen, writeLock: false, AutoEmission(), DebugOptions(debug));
     if (result is null)
     {
         return 1;
     }
 
     Console.WriteLine($"OK {file.Name}");
-    PrintModel(result.Model);
     PrintEmission(result.Emission);
     return 0;
 }
 
-static int RunLock(FileInfo file, string? model, bool debug)
+static int RunLock(FileInfo file, bool debug)
 {
     if (!file.Exists)
     {
@@ -235,7 +213,7 @@ static int RunLock(FileInfo file, string? model, bool debug)
 
     var pipeline = new CompilationPipeline();
     var source = File.ReadAllText(file.FullName);
-    var result = pipeline.Compile(source, file.FullName, emission: AutoEmission(), model: AutoModel(model, debug));
+    var result = pipeline.Compile(source, file.FullName, emission: AutoEmission(), model: DebugOptions(debug));
     PrintDiagnostics(result.Diagnostics);
     if (!result.Success)
     {
@@ -248,7 +226,7 @@ static int RunLock(FileInfo file, string? model, bool debug)
     return 0;
 }
 
-static int RunExplain(FileInfo file, string? model, bool debug)
+static int RunExplain(FileInfo file, bool debug)
 {
     if (!file.Exists)
     {
@@ -256,13 +234,13 @@ static int RunExplain(FileInfo file, string? model, bool debug)
         return 1;
     }
 
-    var result = new CompilationPipeline().Compile(File.ReadAllText(file.FullName), file.FullName, emission: AutoEmission(), model: AutoModel(model, debug));
+    var result = new CompilationPipeline().Compile(File.ReadAllText(file.FullName), file.FullName, emission: AutoEmission(), model: DebugOptions(debug));
     PrintDiagnostics(result.Diagnostics);
     Console.Write(Explainer.Explain(result, file.FullName));
     return result.Success ? 0 : 1;
 }
 
-static int RunDiff(FileInfo file, string? model, bool debug)
+static int RunDiff(FileInfo file, bool debug)
 {
     if (!file.Exists)
     {
@@ -272,7 +250,7 @@ static int RunDiff(FileInfo file, string? model, bool debug)
 
     var pipeline = new CompilationPipeline();
     var source = File.ReadAllText(file.FullName);
-    var result = pipeline.Compile(source, file.FullName, emission: AutoEmission(), model: AutoModel(model, debug));
+    var result = pipeline.Compile(source, file.FullName, emission: AutoEmission(), model: DebugOptions(debug));
     PrintDiagnostics(result.Diagnostics);
     if (!result.Success)
     {
@@ -285,7 +263,7 @@ static int RunDiff(FileInfo file, string? model, bool debug)
     return 0;
 }
 
-static int RunToolsList(FileInfo file, string? model, bool debug)
+static int RunToolsList(FileInfo file, bool debug)
 {
     if (!file.Exists)
     {
@@ -294,12 +272,8 @@ static int RunToolsList(FileInfo file, string? model, bool debug)
     }
 
     var pipeline = new CompilationPipeline();
-    var result = pipeline.Compile(File.ReadAllText(file.FullName), file.FullName, emission: AutoEmission(), model: AutoModel(model, debug));
-    PrintDiagnostics(result.Diagnostics.Where(d => d.Code.StartsWith("E4", StringComparison.Ordinal) || d.Code.StartsWith("E5", StringComparison.Ordinal) || d.Code == "E2107").ToList());
-    if (result.Diagnostics.Any(d => d.Code == "E2107"))
-    {
-        return 1;
-    }
+    var result = pipeline.Compile(File.ReadAllText(file.FullName), file.FullName, emission: AutoEmission(), model: DebugOptions(debug));
+    PrintDiagnostics(result.Diagnostics.Where(d => d.Code.StartsWith("E4", StringComparison.Ordinal) || d.Code.StartsWith("E5", StringComparison.Ordinal)).ToList());
 
     Console.WriteLine($"Permissions: {(result.GrantedEffects.Count == 0 ? "(none)" : string.Join(", ", result.GrantedEffects))}");
     foreach (var capability in result.Capabilities)
@@ -318,7 +292,7 @@ static int RunToolsList(FileInfo file, string? model, bool debug)
     return 0;
 }
 
-static int RunToolsInspect(FileInfo file, string operation, string? model, bool debug)
+static int RunToolsInspect(FileInfo file, string operation, bool debug)
 {
     if (!file.Exists)
     {
@@ -327,13 +301,7 @@ static int RunToolsInspect(FileInfo file, string operation, string? model, bool 
     }
 
     var pipeline = new CompilationPipeline();
-    var result = pipeline.Compile(File.ReadAllText(file.FullName), file.FullName, emission: AutoEmission(), model: AutoModel(model, debug));
-    var modelErrors = result.Diagnostics.Where(d => d.Code == "E2107").ToList();
-    if (modelErrors.Count > 0)
-    {
-        PrintDiagnostics(modelErrors);
-        return 1;
-    }
+    var result = pipeline.Compile(File.ReadAllText(file.FullName), file.FullName, emission: AutoEmission(), model: DebugOptions(debug));
     if (operation.StartsWith("pwsh.", StringComparison.OrdinalIgnoreCase))
     {
         var entry = pipeline.Cmdlets.Find(operation[5..]);
@@ -389,7 +357,7 @@ static string DescribeType(Writ.Compiler.Ir.IrType type) => type switch
     _ => type.GetType().Name
 };
 
-static int RunCompile(FileInfo file, DirectoryInfo? outDir, string? target, bool frozen, string? model, bool debug)
+static int RunCompile(FileInfo file, DirectoryInfo? outDir, string? target, bool frozen, bool debug)
 {
     if (!TryEmission(target, out var emission))
     {
@@ -397,7 +365,7 @@ static int RunCompile(FileInfo file, DirectoryInfo? outDir, string? target, bool
     }
 
     var pipeline = new CompilationPipeline();
-    var result = CompileFile(file, pipeline, frozen, writeLock: !frozen, emission, AutoModel(model, debug));
+    var result = CompileFile(file, pipeline, frozen, writeLock: !frozen, emission, DebugOptions(debug));
     if (result is null || result.Ir is null)
     {
         return 1;
@@ -407,7 +375,6 @@ static int RunCompile(FileInfo file, DirectoryInfo? outDir, string? target, bool
     Directory.CreateDirectory(directory);
     var baseName = Path.GetFileNameWithoutExtension(file.Name);
     var written = new List<string>();
-    PrintModel(result.Model);
     PrintEmission(result.Emission);
     var scriptPath = Path.Combine(directory, $"{baseName}.ps1");
     File.WriteAllText(scriptPath, result.GeneratedPowerShell);
@@ -427,20 +394,19 @@ static int RunCompile(FileInfo file, DirectoryInfo? outDir, string? target, bool
     return 0;
 }
 
-static int RunExecute(FileInfo file, string entry, FileInfo? inputFile, string? target, bool dryRun, string? model, bool debug)
+static int RunExecute(FileInfo file, string entry, FileInfo? inputFile, string? target, bool dryRun, bool debug)
 {
     if (!TryEmission(target, out var emission))
     {
         return 1;
     }
 
-    var result = CompileFile(file, new CompilationPipeline(), frozen: false, writeLock: false, emission, AutoModel(model, debug));
+    var result = CompileFile(file, new CompilationPipeline(), frozen: false, writeLock: false, emission, DebugOptions(debug));
     if (result is null)
     {
         return 1;
     }
 
-    PrintModel(result.Model);
     PrintEmission(result.Emission);
 
     string? inputJson = null;
@@ -478,25 +444,10 @@ static int RunExecute(FileInfo file, string entry, FileInfo? inputFile, string? 
 
 static EmissionOptions AutoEmission() => new() { ReadUserFile = true };
 
-static ModelOptions AutoModel(string? profile, bool debug = false) => new()
+static ModelOptions DebugOptions(bool debug) => new()
 {
-    ReadUserFile = true,
-    Profile = string.IsNullOrWhiteSpace(profile) ? null : profile.Trim(),
     Debug = debug ? Console.Error : null
 };
-
-static void PrintModel(ModelChoice? model)
-{
-    if (model is null)
-    {
-        return;
-    }
-
-    var named = string.IsNullOrEmpty(model.Model) ? model.Provider : $"{model.Provider} {model.Model}";
-    var profile = string.IsNullOrEmpty(model.Profile) ? "" : $" ({model.Profile})";
-    var source = model.Source == "built-in" ? "built-in" : Path.GetFileName(model.Source);
-    Console.WriteLine($"Model: {named}{profile} from {source}");
-}
 
 static bool TryEmission(string? target, out EmissionOptions emission)
 {

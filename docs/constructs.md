@@ -2,6 +2,25 @@
 
 Checklist against the Windows PowerShell 3.0 language specification in `docs/ps`, plus the PowerShell 7 operators Writ targets. Cmdlets stay in the command catalog. Workflows are not on this list: PowerShell 7 does not run them.
 
+## Paragraphs and pronouns
+
+A loop or a test can be a sentence, or two sentences, instead of an indented block. A comma, `and`, or a period continues the same thought. A blank line, or a new sentence that names something else, ends it.
+
+`it` means the most recent single value. Inside `for each number`, that is the number. After the sentence, it is whatever was named before the loop. `they`, `them`, and `their` mean the most recent list. `its length` and `their count` are the length of that value.
+
+```text
+the total is 0
+for each number from 1 to 3, add it to the total
+return it
+
+the files are a list containing "a" and "bb"
+for each file in the files, add its length to the total. If it is 2, skip it.
+
+keep increasing it until it is 3
+```
+
+`add X to the file` still writes a file. `add X to the total` adds to that value. `skip it` goes to the next item. `skip the rest` and `stop there` leave the loop.
+
 ## Statements
 
 - [x] `break` / `break the loop` / `break to Label`

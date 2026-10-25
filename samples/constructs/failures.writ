@@ -1,0 +1,16 @@
+# try, if that fails, and finally. The missing file is the failure.
+# Running returns "failed".
+
+Allow reading files
+
+When run, returning a string
+    the path is the combined path of the temp folder and "writ-sample-missing.txt"
+    the outcome is "unread"
+    try to
+        the text is the contents of the file at the path
+        the outcome is "read"
+    if that fails
+        the outcome is "failed"
+    finally
+        say "checked"
+    return the outcome

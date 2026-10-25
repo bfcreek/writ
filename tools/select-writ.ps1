@@ -16,7 +16,12 @@ if (-not (Test-Path -LiteralPath $programsDir)) {
     Write-Error "Programs directory not found: $programsDir"
 }
 
-$files = @(Get-ChildItem -LiteralPath $programsDir -Filter '*.writ' -File | Sort-Object Name)
+$files = @(Get-ChildItem -LiteralPath $programsDir -Filter '*.writ' -Recurse -File |
+    Where-Object {
+        $relative = $_.FullName.Substring($programsDir.Length).TrimStart('\', '/')
+        $relative -notmatch '^(errors|out)(\\|/)'
+    } |
+    Sort-Object FullName)
 if ($files.Count -eq 0) {
     Write-Error "No .writ files in $programsDir"
 }
@@ -24,7 +29,8 @@ if ($files.Count -eq 0) {
 Write-Host "Writ programs in .\samples"
 Write-Host ''
 for ($i = 0; $i -lt $files.Count; $i++) {
-    Write-Host ('  {0}. {1}' -f ($i + 1), $files[$i].Name)
+    $relative = $files[$i].FullName.Substring($programsDir.Length).TrimStart('\', '/')
+    Write-Host ('  {0}. {1}' -f ($i + 1), $relative)
 }
 Write-Host ''
 

@@ -28,9 +28,14 @@ public sealed partial class Parser
             return ParseExit();
         }
 
-        if (IsWord(_current, "repeat") && CheckNext(TokenKind.NewLine))
+        if (IsWord(_current, "repeat") && (CheckNext(TokenKind.NewLine) || CheckNext(TokenKind.Comma) || IsWord(_current + 1, "until") || IsAt(_current + 1, TokenKind.While)))
         {
             return ParseRepeat();
+        }
+
+        if (IsWord(_current, "keep"))
+        {
+            return ParseKeep();
         }
 
         if (IsWord(_current, "switch") && IsWord(_current + 1, "on"))
@@ -48,12 +53,12 @@ public sealed partial class Parser
             return ParseTrapOrData("data");
         }
 
-        if (IsWord(_current, "mark") && IsAt(_current + 1, TokenKind.Identifier))
+        if (IsWord(_current, "mark") && StartsName(_current + 1))
         {
             return ParseMark();
         }
 
-        if (IsWord(_current, "increase", "decrease", "multiply", "divide", "remainder"))
+        if (IsWord(_current, "increase", "decrease", "multiply", "divide", "remainder", "increasing", "decreasing", "multiplying", "dividing"))
         {
             return ParseUpdate();
         }
@@ -162,8 +167,35 @@ public sealed partial class Parser
     private DoStmtAst ParseRepeat()
     {
         var start = Advance().Span;
-        Consume(TokenKind.NewLine, "Expected a newline after 'repeat'.");
-        var body = ParseBlock();
+        if (Check(TokenKind.NewLine) && CheckNext(TokenKind.Indent))
+        {
+            Consume(TokenKind.NewLine, "Expected a newline after 'repeat'.");
+            var indented = ParseBlock();
+            var untilBlock = IsWord(_current, "until");
+            if (!untilBlock && !Check(TokenKind.While))
+            {
+                _diagnostics.Error("E1104", "Expected 'while' or 'until' after 'repeat'.", _filePath, Peek().Span);
+            }
+            else
+            {
+                Advance();
+            }
+
+            var blockCondition = ParseExpression();
+            Match(TokenKind.NewLine);
+            return new DoStmtAst(indented, blockCondition, untilBlock, Combine(start, blockCondition.Span));
+        }
+
+        if (IsWord(_current, "until") || Check(TokenKind.While))
+        {
+            var untilFirst = IsWord(_current, "until");
+            Advance();
+            var condition = ParseExpression();
+            var body = ParseLoopBody("repeated actions");
+            return new DoStmtAst(body, condition, untilFirst, Combine(start, condition.Span));
+        }
+
+        var actions = ParseParagraphClauses(stopAtUntil: true);
         var until = IsWord(_current, "until");
         if (!until && !Check(TokenKind.While))
         {
@@ -174,9 +206,373 @@ public sealed partial class Parser
             Advance();
         }
 
+        var trailing = ParseExpression();
+        Match(TokenKind.Dot);
+        Match(TokenKind.NewLine);
+        return new DoStmtAst(actions, trailing, until, Combine(start, trailing.Span));
+    }
+
+    private DoStmtAst ParseKeep()
+    {
+        var start = Advance().Span;
+        var body = ParseParagraphClauses(stopAtUntil: true);
+        var until = IsWord(_current, "until");
+        if (!until && !Check(TokenKind.While))
+        {
+            _diagnostics.Error("E1104", "Expected 'until' or 'while' to finish 'keep'.", _filePath, Peek().Span);
+        }
+        else
+        {
+            Advance();
+        }
+
         var condition = ParseExpression();
+        Match(TokenKind.Dot);
         Match(TokenKind.NewLine);
         return new DoStmtAst(body, condition, until, Combine(start, condition.Span));
+    }
+
+    private IReadOnlyList<StmtAst> ParseLoopBody(string what)
+    {
+        if (Check(TokenKind.NewLine) && CheckNext(TokenKind.Indent))
+        {
+            Consume(TokenKind.NewLine, "Expected a newline.");
+            return ParseBlock();
+        }
+
+        if (Check(TokenKind.Comma) || Check(TokenKind.Dot) || (_paragraph > 0 && !Check(TokenKind.NewLine)) || ContinuesOnNextLine())
+        {
+            var body = ParseParagraphClauses();
+            Match(TokenKind.Dot);
+            return body;
+        }
+
+        Consume(TokenKind.NewLine, $"Expected a newline, or a comma and the rest of the {what}.");
+        return ParseBlock();
+    }
+
+    private IReadOnlyList<StmtAst> ParseParagraphClauses(bool stopAtOtherwise = false, bool stopAtUntil = false)
+    {
+        var saved = _paragraph;
+        _paragraph++;
+        var body = new List<StmtAst>();
+        try
+        {
+            while (!IsAtEnd())
+            {
+                SkipClauseSeparators();
+                if (Check(TokenKind.Dedent) || IsAtEnd())
+                {
+                    break;
+                }
+
+                if (stopAtOtherwise && AtOtherwise())
+                {
+                    break;
+                }
+
+                if (stopAtUntil && (IsWord(_current, "until") || Check(TokenKind.While)))
+                {
+                    break;
+                }
+
+                if (Check(TokenKind.Dot))
+                {
+                    if (!SentenceContinues())
+                    {
+                        break;
+                    }
+
+                    Advance();
+                    SkipNewLines();
+                    continue;
+                }
+
+                if (Check(TokenKind.NewLine))
+                {
+                    if (CheckNext(TokenKind.NewLine) || CheckNext(TokenKind.Dedent) || !ContinuesOnNextLine())
+                    {
+                        break;
+                    }
+
+                    Advance();
+                    continue;
+                }
+
+                if (body.Count > 0 && AtLineStart() && !IsContinuation(_current))
+                {
+                    break;
+                }
+
+                var mark = _current;
+                body.Add(ParseStatement());
+                SkipFiller();
+                if (_current == mark)
+                {
+                    var stuck = Peek();
+                    _diagnostics.Error("E1106", $"Could not read a clause starting at '{stuck.Text}'.", _filePath, stuck.Span);
+                    Advance();
+                }
+            }
+        }
+        finally
+        {
+            _paragraph = saved;
+        }
+
+        return body;
+    }
+
+    private void SkipClauseSeparators()
+    {
+        while (true)
+        {
+            if (Check(TokenKind.Comma))
+            {
+                Advance();
+                continue;
+            }
+
+            if (Check(TokenKind.And) && IsContinuation(_current + 1))
+            {
+                Advance();
+                continue;
+            }
+
+            if (IsWord(_current, "then", "also", "but"))
+            {
+                Advance();
+                continue;
+            }
+
+            break;
+        }
+    }
+
+    private void SkipFiller()
+    {
+        if (IsWord(_current, "each") && IsWord(_current + 1, "time"))
+        {
+            Advance();
+            Advance();
+        }
+    }
+
+    private bool AtOtherwise() =>
+        Check(TokenKind.Otherwise) || (Check(TokenKind.And) && CheckNext(TokenKind.Otherwise));
+
+    private bool AtLineStart() => _current > 0 && _tokens[_current - 1].Kind == TokenKind.NewLine;
+
+    private bool AtClauseEnd() =>
+        Check(TokenKind.Comma) || Check(TokenKind.Dot) || Check(TokenKind.Dedent) || IsAtEnd()
+        || Check(TokenKind.Otherwise) || IsWord(_current, "until") || Check(TokenKind.While)
+        || (Check(TokenKind.And) && (IsContinuation(_current + 1) || CheckNext(TokenKind.Otherwise)));
+
+    private bool ContinuesOnNextLine()
+    {
+        if (!Check(TokenKind.NewLine) || CheckNext(TokenKind.NewLine) || CheckNext(TokenKind.Dedent))
+        {
+            return false;
+        }
+
+        return IsContinuation(_current + 1);
+    }
+
+    private bool SentenceContinues()
+    {
+        var index = _current;
+        if (IsAt(index, TokenKind.Dot))
+        {
+            index++;
+        }
+
+        if (IsAt(index, TokenKind.NewLine))
+        {
+            index++;
+            if (IsAt(index, TokenKind.NewLine) || IsAt(index, TokenKind.Dedent) || IsAt(index, TokenKind.EndOfFile))
+            {
+                return false;
+            }
+        }
+
+        return IsContinuation(index) || (IsAt(index, TokenKind.And) && IsContinuation(index + 1));
+    }
+
+    private bool IsContinuation(int index)
+    {
+        if ((uint)index >= (uint)_tokens.Count)
+        {
+            return false;
+        }
+
+        var text = _tokens[index].Text;
+        return text.Equals("if", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("otherwise", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("increase", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("decrease", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("increasing", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("decreasing", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("multiply", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("divide", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("add", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("adding", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("skip", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("stop", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("say", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("display", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("print", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("it", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("they", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("them", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("its", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("their", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private ExprAst? TryParsePossessive(SourceSpan start)
+    {
+        if (!IsWord(_current, "its", "their"))
+        {
+            return null;
+        }
+
+        var pronoun = IsWord(_current, "their") ? "them" : "it";
+        Advance();
+        string field;
+        if (Match(TokenKind.Length))
+        {
+            field = "length";
+        }
+        else if (Match(TokenKind.Count))
+        {
+            field = "count";
+        }
+        else
+        {
+            var words = ReadWords();
+            if (words is null)
+            {
+                return null;
+            }
+
+            field = words.Value.Camel;
+        }
+
+        var target = new NameExprAst(pronoun, start);
+        return new OfExprAst(field, target, Combine(start, Previous().Span));
+    }
+
+    private StmtAst? TryParseProse()
+    {
+        if (IsWord(_current, "add", "adding") && TryParseAddTo() is { } add)
+        {
+            return add;
+        }
+
+        if (IsWord(_current, "skip") && TryParseSkip() is { } skip)
+        {
+            return skip;
+        }
+
+        if (IsWord(_current, "stop") && !IsWord(_current + 1, "with") && TryParseStop() is { } stop)
+        {
+            return stop;
+        }
+
+        return null;
+    }
+
+    private StmtAst? TryParseStop()
+    {
+        var mark = _current;
+        var start = Advance().Span;
+        if (IsWord(_current, "there"))
+        {
+            Advance();
+        }
+        else if (IsWord(_current, "the") && IsWord(_current + 1, "loop"))
+        {
+            Advance();
+            Advance();
+        }
+        else if (!AtClauseEnd() && !Check(TokenKind.NewLine))
+        {
+            _current = mark;
+            return null;
+        }
+
+        Match(TokenKind.NewLine);
+        return new FlowStmtAst("break", null, null, Combine(start, Previous().Span));
+    }
+
+    private FlowStmtAst? TryParseSkip()
+    {
+        var mark = _current;
+        var start = Advance().Span;
+        if (IsWord(_current, "the") && IsWord(_current + 1, "rest"))
+        {
+            Advance();
+            Advance();
+            Match(TokenKind.NewLine);
+            return new FlowStmtAst("break", null, null, Combine(start, Previous().Span));
+        }
+
+        if (IsWord(_current, "it", "them") || (IsWord(_current, "this") && IsWord(_current + 1, "one")))
+        {
+            Advance();
+            if (IsWord(_current, "one"))
+            {
+                Advance();
+            }
+
+            Match(TokenKind.NewLine);
+            return new FlowStmtAst("continue", null, null, Combine(start, Previous().Span));
+        }
+
+        if (AtClauseEnd() || Check(TokenKind.NewLine))
+        {
+            Match(TokenKind.NewLine);
+            return new FlowStmtAst("continue", null, null, Combine(start, Previous().Span));
+        }
+
+        _current = mark;
+        return null;
+    }
+
+    private StmtAst? TryParseAddTo()
+    {
+        if (!IsWord(_current, "add", "adding"))
+        {
+            return null;
+        }
+
+        var mark = _current;
+        var start = Advance().Span;
+        var value = ParseExpression();
+        if (!Check(TokenKind.To))
+        {
+            _current = mark;
+            return null;
+        }
+
+        Advance();
+        var destination = ParseExpression();
+        if (destination is not NameExprAst name || IsFileNoun(name.Name))
+        {
+            _current = mark;
+            return null;
+        }
+
+        SkipFiller();
+        Match(TokenKind.NewLine);
+        return new AssignStmtAst(name.Name, value, Combine(start, destination.Span)) { Operator = "+=" };
+    }
+
+    /// <summary>"add the line to the file" writes a file. Other destinations are values that grow.</summary>
+    private static bool IsFileNoun(string name)
+    {
+        var lower = name.ToLowerInvariant();
+        return lower.Contains("file") || lower.Contains("path") || lower.Contains("folder")
+            || lower.Contains("directory") || lower == "dir" || lower.Contains("log");
     }
 
     private ForStmtAst ParseCountedFor()
@@ -292,7 +688,14 @@ public sealed partial class Parser
     private AssignStmtAst ParseUpdate()
     {
         var word = Advance();
-        var which = word.Text.ToLowerInvariant();
+        var which = word.Text.ToLowerInvariant() switch
+        {
+            "increasing" => "increase",
+            "decreasing" => "decrease",
+            "multiplying" => "multiply",
+            "dividing" => "divide",
+            var other => other
+        };
         Match(TokenKind.The, TokenKind.A, TokenKind.An);
         string? scope = null;
         if (IsWord(_current, "global", "local", "private")
@@ -454,7 +857,7 @@ public sealed partial class Parser
         {
             var words = new List<string>();
             end = Peek().Span;
-            while (Check(TokenKind.Identifier) || Check(TokenKind.Dot))
+            while ((IsSpelledWord(_current) && !IsNameCloser(_current)) || Check(TokenKind.Dot))
             {
                 var token = Advance();
                 words.Add(token.Text);
@@ -495,14 +898,14 @@ public sealed partial class Parser
         do
         {
             Match(TokenKind.And);
-            if (!Check(TokenKind.Identifier))
+            if (!StartsName(_current))
             {
                 break;
             }
 
             members.Add(Advance().Text);
         }
-        while (Match(TokenKind.Comma) || (Check(TokenKind.And) && IsAt(_current + 1, TokenKind.Identifier)));
+        while (Match(TokenKind.Comma) || (Check(TokenKind.And) && StartsName(_current + 1)));
 
         Match(TokenKind.NewLine);
         var end = members.Count > 0 ? Previous().Span : name.Span;
@@ -539,7 +942,7 @@ public sealed partial class Parser
             {
                 Advance();
                 Advance();
-                if (!Check(TokenKind.Identifier))
+                if (!StartsName(_current))
                 {
                     _diagnostics.Error("E1104", "Expected an alias.", _filePath, Peek().Span);
                     continue;
@@ -1142,13 +1545,13 @@ public sealed partial class Parser
             return new ConstructExprAst("auto", [new LiteralExprAst("pipelineItem", end)], Combine(start, end));
         }
 
-        if (article && IsWord(_current, "arguments") && !IsAt(_current + 1, TokenKind.Identifier))
+        if (article && IsWord(_current, "arguments") && !ContinuesName(_current + 1))
         {
             var end = Advance().Span;
             return new ConstructExprAst("auto", [new LiteralExprAst("arguments", end)], Combine(start, end));
         }
 
-        if (article && IsWord(_current, "errors") && !IsAt(_current + 1, TokenKind.Identifier))
+        if (article && IsWord(_current, "errors") && !ContinuesName(_current + 1))
         {
             var end = Advance().Span;
             return new ConstructExprAst("auto", [new LiteralExprAst("errors", end)], Combine(start, end));
@@ -1156,7 +1559,7 @@ public sealed partial class Parser
 
         if (article && (IsWord(_current, "global", "local", "private")
                 || (IsWord(_current, "script") && !IsWord(_current + 1, "folder", "directory")))
-            && IsAt(_current + 1, TokenKind.Identifier))
+            && StartsName(_current + 1))
         {
             var scope = Advance().Text.ToLowerInvariant();
             var name = ReadWords();
@@ -1289,8 +1692,7 @@ public sealed partial class Parser
 
     private bool TryReadTypeName(out string name, out SourceSpan span)
     {
-        if (Check(TokenKind.Identifier) || Check(TokenKind.String) || Check(TokenKind.Integer)
-            || Check(TokenKind.Decimal) || Check(TokenKind.Boolean))
+        if (StartsName(_current))
         {
             var token = Advance();
             name = token.Text;

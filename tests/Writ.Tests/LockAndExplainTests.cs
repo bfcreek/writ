@@ -7,7 +7,7 @@ public class LockAndExplainTests
     [Fact]
     public void Lock_records_model_readings_and_frozen_catches_a_changed_reading()
     {
-        var path = TestPaths.Sample("folder-report.writ");
+        var path = TestPaths.Sample(Path.Combine("files", "folder-report.writ"));
         var source = File.ReadAllText(path);
         var pipeline = new CompilationPipeline();
         var result = pipeline.Compile(source, path);
@@ -28,14 +28,14 @@ public class LockAndExplainTests
             Readings = locked.Readings.Select(r => new LockedReading { Where = r.Where, Text = r.Text, Selections = ["0:pwsh.Get-Item"] }).ToList()
         };
         var diagnostics = LockFile.Verify(drifted, locked, path, frozen: true);
-        Assert.Contains(diagnostics, d => d.Code == "E4009" && d.Message.Contains("model read the program differently"));
+        Assert.Contains(diagnostics, d => d.Code == "E4009" && d.Message.Contains("A reading changed since the lock"));
         Assert.Empty(LockFile.Verify(drifted, locked, path, frozen: false));
     }
 
     [Fact]
     public void Lock_roundtrips_through_disk()
     {
-        var path = TestPaths.Sample("innate-total.writ");
+        var path = TestPaths.Sample(Path.Combine("basics", "innate-total.writ"));
         var source = File.ReadAllText(path);
         var pipeline = new CompilationPipeline();
         var result = pipeline.Compile(source, path);
@@ -58,7 +58,7 @@ public class LockAndExplainTests
     [Fact]
     public void Explain_names_tools_effects_and_readings()
     {
-        var path = TestPaths.Sample("careful-retry.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "careful-retry.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         var text = Explainer.Explain(result, path);
         Assert.Contains("tool payments: mock", text);
@@ -70,7 +70,7 @@ public class LockAndExplainTests
     [Fact]
     public void Diff_separates_text_edits_from_semantic_changes()
     {
-        var path = TestPaths.Sample("innate-total.writ");
+        var path = TestPaths.Sample(Path.Combine("basics", "innate-total.writ"));
         var source = File.ReadAllText(path);
         var pipeline = new CompilationPipeline();
         var locked = LockFile.Build(source, pipeline.Compile(source, path), pipeline.Cmdlets);

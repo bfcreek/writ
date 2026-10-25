@@ -11,14 +11,14 @@ public class SemanticResolverTests
     [Fact]
     public void Intent_sum_compiles_and_runs()
     {
-        var path = SamplePath("intent-sum.writ");
+        var path = SamplePath(Path.Combine("basics", "intent-sum.writ"));
         var source = File.ReadAllText(path);
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
         Assert.Contains(result.Ir!.Functions[0].Body, n => n is IrAssign { Value: IrSumProjection });
 
-        var input = File.ReadAllText(SamplePath("input-calculate-total.json"));
+        var input = File.ReadAllText(SamplePath(Path.Combine("basics", "input-calculate-total.json")));
         var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "intent-sum", "CalculateTotal", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(27.54m, Assert.IsType<decimal>(exec.Value));
@@ -27,13 +27,13 @@ public class SemanticResolverTests
     [Fact]
     public void Intent_filter_compiles_and_runs()
     {
-        var path = SamplePath("intent-filter.writ");
+        var path = SamplePath(Path.Combine("basics", "intent-filter.writ"));
         var source = File.ReadAllText(path);
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Contains(result.Ir!.Functions[0].Body, n => n is IrAssign { Value: IrFilter });
 
-        var input = File.ReadAllText(SamplePath("input-intent-filter.json"));
+        var input = File.ReadAllText(SamplePath(Path.Combine("basics", "input-intent-filter.json")));
         var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "intent-filter", "PositiveQuantity", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         var list = Assert.IsAssignableFrom<System.Collections.IList>(exec.Value);
@@ -99,7 +99,7 @@ public class SemanticResolverTests
     [Fact]
     public void Deterministic_code_still_compiles_without_resolver_calls()
     {
-        var path = SamplePath("fizzbuzz.writ");
+        var path = SamplePath(Path.Combine("basics", "fizzbuzz.writ"));
         var result = new CompilationPipeline(new StubSemanticResolver()).Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
     }
@@ -107,7 +107,7 @@ public class SemanticResolverTests
     [Fact]
     public void Resolved_ir_has_ResolvedByModel_provenance()
     {
-        var path = SamplePath("intent-sum.writ");
+        var path = SamplePath(Path.Combine("basics", "intent-sum.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var assign = Assert.IsType<IrAssign>(result.Ir!.Functions[0].Body[0]);

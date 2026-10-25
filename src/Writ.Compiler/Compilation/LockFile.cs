@@ -23,7 +23,7 @@ public sealed class LockedReading
 
 /// <summary>
 /// What <c>&lt;file&gt;.writ.lock.json</c> pins: the source, the compiler, every discovered
-/// capability, the cmdlet catalog, every reading the model made, and the emission those
+/// capability, the cmdlet catalog, every template reading, and the emission those
 /// constraints chose. Builds are reproducible when all of these agree.
 /// </summary>
 public sealed class WritLock
@@ -174,7 +174,7 @@ public static class LockFile
                 .Concat(lockedReadings.Except(currentReadings, StringComparer.Ordinal))
                 .FirstOrDefault() ?? "(reading count differs)";
             diagnostics.Add(new Diagnostic("E4009", DiagnosticSeverity.Error,
-                $"The model read the program differently than when it was locked: {changed}", filePath, span));
+                $"A reading changed since the lock: {changed}", filePath, span));
         }
 
         return diagnostics;

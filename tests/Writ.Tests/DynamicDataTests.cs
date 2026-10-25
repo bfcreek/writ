@@ -9,7 +9,7 @@ public class DynamicDataTests
     [Fact]
     public void Json_file_is_validated_into_records_and_summed()
     {
-        var path = TestPaths.Sample("json-total.writ");
+        var path = TestPaths.Sample(Path.Combine("data", "json-total.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
@@ -19,7 +19,7 @@ public class DynamicDataTests
         var validate = Assert.IsType<IrValidate>(Assert.IsType<IrAssign>(body[2]).Value);
         Assert.IsType<IrListType>(validate.Type);
 
-        var input = System.Text.Json.JsonSerializer.Serialize(new { path = TestPaths.Sample("invoices.json") });
+        var input = System.Text.Json.JsonSerializer.Serialize(new { path = TestPaths.Sample(Path.Combine("data", "invoices.json")) });
         var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "json-total", "Total", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(114.75m, Convert.ToDecimal(exec.Value));
@@ -38,7 +38,7 @@ public class DynamicDataTests
     [Fact]
     public void Missing_field_fails_when_the_script_runs()
     {
-        var path = TestPaths.Sample("json-total.writ");
+        var path = TestPaths.Sample(Path.Combine("data", "json-total.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         var broken = Path.Combine(Path.GetTempPath(), "writ-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(broken, """[{ "number": "A-1" }]""");
@@ -58,7 +58,7 @@ public class DynamicDataTests
     [Fact]
     public void Rest_sample_checks_without_network()
     {
-        var path = TestPaths.Sample("rest-total.writ");
+        var path = TestPaths.Sample(Path.Combine("data", "rest-total.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Contains("Invoke-RestMethod -Uri $url", result.GeneratedPowerShell!);

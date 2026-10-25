@@ -1,0 +1,27 @@
+# Label the largest files in a folder. An empty folder means the script folder.
+Allow reading files
+Also use "../files/folder-helpers.writ"
+
+When run, given a folder which is a string, returning a list of string
+    if the folder is nothing or the folder is equal to ""
+        the folder is the script folder
+    the lines are an empty list
+    try to
+        the files are the items in the folder, files only
+    if that fails
+        warn "Could not read {the folder}: {the error}"
+        return the lines
+    the real are the files where the length is greater than 0
+    the biggest are the first 5 of the real sorted by length, largest first
+    for each file in the biggest
+        the size is the length of the file as an integer
+        the kind is "ordinary"
+        if the size is greater than 100000
+            the kind is "large"
+        otherwise if the size is less than 100
+            the kind is "tiny"
+        the described is Describe with the name of the file and the size
+        the lines are the lines with "{the kind}: {the described}" added
+    note "Showing {the count of the biggest} of {the count of the real}"
+    say "Folder {the folder}"
+    return the lines

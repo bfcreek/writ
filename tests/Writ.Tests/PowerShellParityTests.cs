@@ -6,13 +6,13 @@ namespace Writ.Tests;
 public class PowerShellParityTests
 {
     [Theory]
-    [InlineData("calculate-total.writ", "CalculateTotal", "input-calculate-total.json")]
-    [InlineData("intent-sum.writ", "CalculateTotal", "input-calculate-total.json")]
-    [InlineData("innate-total.writ", "CalculateTotal", "input-calculate-total.json")]
-    [InlineData("intent-filter.writ", "PositiveQuantity", "input-intent-filter.json")]
-    [InlineData("fizzbuzz-loop.writ", "ClassifyAll", "input-fizzbuzz.json")]
-    [InlineData("recover-failures.writ", "RecoverFailures", "input-recover.json")]
-    [InlineData("but-first.writ", "Recover", "input-but-first.json")]
+    [InlineData("basics/calculate-total.writ", "CalculateTotal", "basics/input-calculate-total.json")]
+    [InlineData("basics/intent-sum.writ", "CalculateTotal", "basics/input-calculate-total.json")]
+    [InlineData("basics/innate-total.writ", "CalculateTotal", "basics/input-calculate-total.json")]
+    [InlineData("basics/intent-filter.writ", "PositiveQuantity", "basics/input-intent-filter.json")]
+    [InlineData("basics/fizzbuzz-loop.writ", "ClassifyAll", "basics/input-fizzbuzz.json")]
+    [InlineData("payments/recover-failures.writ", "RecoverFailures", "payments/input-recover.json")]
+    [InlineData("payments/but-first.writ", "Recover", "payments/input-but-first.json")]
     public void PowerShell_runs_the_sample(string sample, string entry, string inputFile)
     {
         var path = TestPaths.Sample(sample);
@@ -29,13 +29,13 @@ public class PowerShellParityTests
     [Fact]
     public void PowerShell_capability_calls_happen_only_at_run_and_in_order()
     {
-        var path = TestPaths.Sample("but-first.writ");
+        var path = TestPaths.Sample(Path.Combine("payments", "but-first.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var script = result.GeneratedPowerShell!;
         Assert.True(script.IndexOf("'list_failed'", StringComparison.Ordinal) < script.IndexOf("'retry'", StringComparison.Ordinal));
 
-        var exec = new PowerShellExecutor().Execute(script, "but-first", "Recover", File.ReadAllText(TestPaths.Sample("input-but-first.json")));
+        var exec = new PowerShellExecutor().Execute(script, "but-first", "Recover", File.ReadAllText(TestPaths.Sample(Path.Combine("payments", "input-but-first.json"))));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(2, exec.CapabilityCalls);
         Assert.True(Assert.IsType<bool>(exec.Value));

@@ -211,7 +211,7 @@ public sealed partial class Binder
             if (selection.Subject is null || untyped.All(field => field.Name != selection.Subject))
             {
                 _diagnostics.Error("E2105",
-                    $"The model returned '{selection.Id}' for '{selection.Subject}', which the text did not ask about.",
+                    $"The reading named '{selection.Id}' for '{selection.Subject}', which the text did not ask about.",
                     _filePath, decl.Span);
                 continue;
             }
@@ -220,7 +220,7 @@ public sealed partial class Binder
             if (type is null)
             {
                 _diagnostics.Error("E2105",
-                    $"The model returned '{selection.Id}' for '{selection.Subject}', which is not a type.",
+                    $"The reading named '{selection.Id}' for '{selection.Subject}', which is not a type.",
                     _filePath, decl.Span);
                 continue;
             }
@@ -539,7 +539,7 @@ public sealed partial class Binder
         if (dot <= 0 || dot == selection.Id.Length - 1)
         {
             _diagnostics.Error("E2105",
-                $"The model returned '{selection.Id}', which this compiler cannot apply.",
+                $"The reading named '{selection.Id}', which this compiler cannot apply.",
                 _filePath, span);
             return null;
         }
@@ -715,7 +715,7 @@ public sealed partial class Binder
                 ModelDebug.WriteFailure(_debug, ex, watch.Elapsed);
             }
 
-            _diagnostics.Error("E2106", $"Language model failed: {ex.Message}", _filePath, span);
+            _diagnostics.Error("E2106", $"Template reading failed: {ex.Message}", _filePath, span);
             return null;
         }
     }
@@ -778,7 +778,7 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// Query a defaults server when the sentence names its alias, so the model can select a tool.
+    /// Query a defaults server when the sentence names its alias, so a tool can be selected from its list.
     /// Servers the sentence does not name are left alone.
     /// </summary>
     private void EnsureMentionedMcp(string text, SourceSpan span)
@@ -1077,8 +1077,10 @@ public sealed partial class Binder
 
         _loopDepth++;
         var bodyScope = new Scope(scope);
+        PushDiscourse();
         var body = stmt.Body.Select(s => BindStatement(s, bodyScope, returnType)).ToList();
         _loopDepth--;
+        PopDiscourse();
         return new IrWhile(condition, body, stmt.Span, IrVoidType.Instance);
     }
 
@@ -1168,38 +1170,41 @@ public sealed partial class Binder
 
     private IrAssign BindAssign(AssignStmtAst assign, Scope scope)
     {
+        var name = ResolveAssignName(assign.Name, assign.Span);
         var value = BindExpression(assign.Value, scope);
         var updating = assign.Operator != "=";
-        var isDecl = !updating && !scope.TryLookup(assign.Name, out _);
-        if (updating && !scope.TryLookup(assign.Name, out _))
+        var isDecl = !updating && !scope.TryLookup(name, out _);
+        if (updating && !scope.TryLookup(name, out _))
         {
-            _diagnostics.Error("E2030", $"'{assign.Name}' has no value to update.", _filePath, assign.Span);
+            _diagnostics.Error("E2030", $"'{name}' has no value to update.", _filePath, assign.Span);
         }
         else if (isDecl)
         {
-            scope.Define(assign.Name, value.Type, assign.Span, _diagnostics, _filePath);
+            scope.Define(name, value.Type, assign.Span, _diagnostics, _filePath);
+            Mention(name, value.Type);
         }
         else if (!updating)
         {
-            var existing = scope.Lookup(assign.Name);
+            var existing = scope.Lookup(name);
             if (existing is IrListType { ElementType: IrErrorType } && value.Type is IrListType refined)
             {
-                scope.Replace(assign.Name, refined);
+                scope.Replace(name, refined);
                 value = value with { Type = refined };
+                Mention(name, refined);
             }
             else if (!TypesCompatible(existing, value.Type))
             {
                 _diagnostics.Error("E2003",
-                    $"Cannot assign '{Describe(value.Type)}' to '{assign.Name}' of type '{Describe(existing)}'.",
+                    $"Cannot assign '{Describe(value.Type)}' to '{name}' of type '{Describe(existing)}'.",
                     _filePath, assign.Span);
             }
         }
 
-        var assignType = scope.TryLookup(assign.Name, out var current) && current is not null ? current : value.Type;
+        var assignType = scope.TryLookup(name, out var current) && current is not null ? current : value.Type;
         var provenance = value.Provenance == Provenance.ResolvedByModel
             ? Provenance.ResolvedByModel
             : Provenance.Deterministic;
-        return new IrAssign(assign.Name, value, isDecl, assign.Span, assignType, provenance)
+        return new IrAssign(name, value, isDecl, assign.Span, assignType, provenance)
         {
             Scope = assign.Scope,
             Operator = assign.Operator,
@@ -1244,9 +1249,17 @@ public sealed partial class Binder
 
         var bodyScope = new Scope(scope);
         bodyScope.Define(stmt.Iterator, elementType, stmt.Span, _diagnostics, _filePath);
+        PushDiscourse();
+        if (collection is IrVar collectionName)
+        {
+            Mention(collectionName.Name, collection.Type, plural: true);
+        }
+
+        Mention(stmt.Iterator, elementType, plural: false);
         _loopDepth++;
         var body = stmt.Body.Select(s => BindStatement(s, bodyScope, returnType)).ToList();
         _loopDepth--;
+        PopDiscourse();
         return new IrForEach(stmt.Iterator, collection, body, stmt.Span, IrVoidType.Instance);
     }
 
@@ -1319,7 +1332,7 @@ public sealed partial class Binder
             {
                 0 => "no rule match",
                 1 => $"rule match: {resolution.Candidates[0].Rationale}",
-                _ => $"{resolution.Candidates.Count} rule matches; not sent to the model"
+                _ => $"{resolution.Candidates.Count} rule matches; not read as a template"
             };
             ModelDebug.WriteRule(_debug, _filePath, intent.Span, intent.Phrase, outcome);
         }
@@ -1531,6 +1544,11 @@ public sealed partial class Binder
             return new IrVar(name.Name, name.Span, type!);
         }
 
+        if (IsPronoun(name.Name))
+        {
+            return ResolvePronoun(name.Name, name.Span);
+        }
+
         if (name.Name is "pipelineItem" or "arguments" or "errors" or "succeeded")
         {
             var auto = name.Name == "succeeded" ? IrPrimitiveType.Boolean : name.Name == "arguments" || name.Name == "errors"
@@ -1577,6 +1595,12 @@ public sealed partial class Binder
 
     private IrNode BindOf(OfExprAst expr, Scope scope)
     {
+        if (expr.Name is "length" or "count")
+        {
+            var sized = BindExpression(expr.Target, scope);
+            return new IrCall("len", [sized], true, [EffectKind.Pure], expr.Span, IrPrimitiveType.Integer);
+        }
+
         if (_functions.ContainsKey(expr.Name))
         {
             return BindCall(new CallExprAst(expr.Name, [expr.Target], expr.Span), scope);

@@ -78,7 +78,7 @@ Each catalog entry carries its arguments so the model binds symbols in scope, as
 - `PowerShellExecutor`: writes the script to a temp folder, invokes pwsh, binds JSON input to parameters by name, parses the last JSON line of output as the result.
 - Parity suite: every sample runs under both backends and produces the same value. Capability samples count calls the same way.
 
-Acceptance: `writ run samples/calculate-total.writ --target powershell` prints 27.54, `recover-failures` prints 1, `but-first` emits `list_failed` before `retry`, and all existing tests pass under both targets.
+Acceptance: `writ run samples/basics/calculate-total.writ --target powershell` prints 27.54, `recover-failures` prints 1, `but-first` emits `list_failed` before `retry`, and all existing tests pass under both targets.
 
 ### P1. Commands, pipelines, and the cmdlet catalog
 
@@ -158,7 +158,7 @@ Acceptance: CI compiles every sample with `--frozen` and no model configured.
 - Parameter binding: the model names which in-scope symbol fills which parameter; the compiler checks the type.
 - Never: inventing a cmdlet, a field, a tool, a type, or a permission. Never deciding retries or effects.
 
-A real model (`ILanguageModel` over HTTP) replaces `InnateLanguageModel` at P1, with the stand-in kept for offline tests. The acceptance filter (`ModelReadings.Accept`) does not change.
+Readings stay inside the compiler. `InnateLanguageModel` matches catalog phrases exactly, then falls back to a local template index. There is no HTTP model. The acceptance filter (`ModelReadings.Accept`) does not change.
 
 ## 6. Equivalency checklist
 

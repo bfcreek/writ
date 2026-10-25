@@ -4,7 +4,7 @@ using Writ.Compiler.Ir;
 namespace Writ.Compiler.Compilation;
 
 /// <summary>
-/// `writ explain`: for each sentence that bound to something with an effect, a model reading,
+/// `writ explain`: for each sentence that bound to something with an effect, a template reading,
 /// or a tool, say what it became. The output is the audit trail a reviewer reads before running.
 /// </summary>
 public static class Explainer
@@ -26,13 +26,6 @@ public static class Explainer
             }
         }
 
-        if (result.Model is { } model)
-        {
-            var named = string.IsNullOrEmpty(model.Model) ? model.Provider : $"{model.Provider} {model.Model}";
-            var profile = string.IsNullOrEmpty(model.Profile) ? "" : $", profile {model.Profile}";
-            sb.AppendLine($"  model: {named}{profile} ({model.Source})");
-        }
-
         if (result.GrantedEffects.Count > 0)
         {
             sb.AppendLine($"  permissions: {string.Join(", ", result.GrantedEffects.Select(DescribeEffect))}");
@@ -45,7 +38,7 @@ public static class Explainer
 
         if (result.Readings.Count > 0)
         {
-            sb.AppendLine("  model readings:");
+            sb.AppendLine("  readings:");
             foreach (var reading in result.Readings)
             {
                 sb.AppendLine($"    {reading.Where} \"{reading.Text}\" -> {string.Join("; ", reading.Selections)}");
@@ -92,8 +85,8 @@ public static class Explainer
         IrRetry retry => $"retry up to {retry.Times} times",
         IrTry t => $"try{(t.OnFailure is not null ? " / if that fails" : "")}{(t.Finally is not null ? " / finally" : "")}",
         IrValidate validate => $"check the data is a {Describe(validate.Type)}",
-        IrSumProjection sum when sum.Provenance == Provenance.ResolvedByModel => $"sum of {DescribeProjection(sum)} (model)",
-        IrFilter filter when filter.Provenance == Provenance.ResolvedByModel => "filter (model)",
+        IrSumProjection sum when sum.Provenance == Provenance.ResolvedByModel => $"sum of {DescribeProjection(sum)} (template)",
+        IrFilter filter when filter.Provenance == Provenance.ResolvedByModel => "filter (template)",
         IrCall { Callee: "json" or "csv" } call => $"parse as {call.Callee.ToUpperInvariant()}",
         IrCall { Callee: "env" } => "read an environment variable",
         _ => null

@@ -1,4 +1,4 @@
-Use payments from mcp "pwsh -NoProfile -NonInteractive -File ../tools/mcp-test-server.ps1"
+Use payments from mcp "pwsh -NoProfile -NonInteractive -File ../../tools/mcp-test-server.ps1"
 Allow network access and changing external systems
 
 A FailedPayment has an id which is a string and a retryCount which is an integer

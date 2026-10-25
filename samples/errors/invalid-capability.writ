@@ -1,4 +1,4 @@
-Use payments from "../payments-invalid.capability.json"
+Use payments from "../payments/payments-invalid.capability.json"
 
 To Broken, returning an integer
     return 0

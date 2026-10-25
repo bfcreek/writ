@@ -1,0 +1,32 @@
+# Total an invoice from JSON, skip lines with no quantity, and print each line.
+Allow reading files
+Also use "pricing.writ"
+
+To TotalDocument, given a document which is a string, returning a decimal
+    the data is the document as JSON
+    the invoice is the data as an Invoice
+    return TotalInvoice with the invoice
+
+To TotalFile, given a path which is a string, returning a decimal
+    try to
+        the text is the contents of the file at the path
+    if that fails
+        warn "Could not read {the path}: {the error}"
+        return 0
+    return TotalDocument with the text
+
+To TotalInvoice, given an invoice which is an Invoice, returning a decimal
+    the lines are the lines of the invoice
+    the billable are the lines where the quantity is greater than 0
+    the subtotal is the sum of price times quantity for each item in the billable
+    the rate is TaxRate with the region of the invoice
+    the tax is the subtotal times the rate
+    the due is the subtotal plus the tax rounded to 2 places
+    for each line in the billable
+        the amount is LineTotal with the line
+        say "{the sku of the line} x {the quantity of the line} = {the amount}"
+    say "Due {the due}"
+    return the due
+
+When run, given a document which is a string, returning a decimal
+    return TotalDocument with the document
