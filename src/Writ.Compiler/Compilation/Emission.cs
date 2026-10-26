@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Writ.Compiler.Codegen;
 using Writ.Compiler.Diagnostics;
 using Writ.Compiler.Ir;
 
@@ -63,7 +64,19 @@ public static class EmissionCatalog
         Blocker = static _ => null
     };
 
-    public static IReadOnlyList<EmissionPlan> All { get; } = [PowerShellScript];
+    public static readonly EmissionPlan CSharpLibrary = new()
+    {
+        Id = "csharp-library",
+        Language = "csharp",
+        Approach = "library",
+        Architecture = "in-process",
+        Summary = "C# library loaded in the same process",
+        Rank = 1,
+        Traits = Traits("csharp", "library", "in-process"),
+        Blocker = CSharpGenerator.Unsupported
+    };
+
+    public static IReadOnlyList<EmissionPlan> All { get; } = [PowerShellScript, CSharpLibrary];
 
     public static IReadOnlySet<string> TraitsVocabulary { get; } = All
         .SelectMany(plan => plan.Traits)
@@ -74,7 +87,7 @@ public static class EmissionCatalog
 
     /// <summary>
     /// <c>auto</c> (or an empty target) lets constraints choose.
-    /// <c>powershell</c> forces the script emission.
+    /// <c>powershell</c> forces the script emission. <c>csharp</c> forces the in-process library.
     /// </summary>
     public static bool TryParseTarget(string? text, out string? id, out string? error)
     {
@@ -96,8 +109,17 @@ public static class EmissionCatalog
             return true;
         }
 
+        if (key.Equals("csharp", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("cs", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals(CSharpLibrary.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            id = CSharpLibrary.Id;
+            error = null;
+            return true;
+        }
+
         id = null;
-        error = $"Unknown target '{text}'. Use auto or powershell.";
+        error = $"Unknown target '{text}'. Use auto, powershell, or csharp.";
         return false;
     }
 

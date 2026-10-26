@@ -483,7 +483,6 @@ function Invoke-WritCompiledScript {
     $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("writ-call-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $dir | Out-Null
     try {
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Writ.psm1') -Destination (Join-Path $dir 'Writ.psm1')
         $scriptPath = Join-Path $dir 'callee.ps1'
         $inputPath = Join-Path $dir 'input.json'
         $runnerPath = Join-Path $dir 'runner.ps1'

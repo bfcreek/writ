@@ -1,5 +1,5 @@
 # Lists .writ files in ./programs, asks which one to compile, and writes the
-# PowerShell emission (script, Writ.psm1, and IR) to ./out.
+# PowerShell emission (script and IR) to ./out. The runtime module goes to ~/.writ/modules/Writ.
 # -Debug also prints each rule decision and model call.
 param(
     [switch]$Debug

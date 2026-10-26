@@ -19,8 +19,10 @@ dotnet run --project src/Writ.Cli -- explain samples/files/largest-files.writ
 dotnet run --project src/Writ.Cli -- check samples/errors/retry-a-write.writ
 ```
 
-Compiling a program (`writ compile`) writes `<name>.ps1` beside `Writ.psm1`. The script runs with `pwsh ./<name>.ps1 -param value`. `--target powershell` skips constraint scoring.
+Compiling a program (`writ compile`) writes `<name>.ps1`. Generated scripts import the shared runtime module at `~/.writ/modules/Writ/Writ.psm1`. The script runs with `pwsh ./<name>.ps1 -param value`. `--target powershell` skips constraint scoring.
 
 ## Releases
 
-Push a tag `v1.2.3` or a prerelease tag `v1.2.3-preview.1`. The release workflow tests that commit, then attaches self-contained binaries and a .NET tool package to the GitHub release. `writ version` prints the version stamped into that build.
+Push a tag `v1.2.3` or a prerelease tag `v1.2.3-preview.1`. `tools/release.ps1` runs the tests, asks for release notes, bumps the patch version from the latest `vX.Y.Z` tag, and pushes that tag. The release workflow tests that commit, then attaches self-contained binaries, Windows installers, and a .NET tool package to the GitHub release. `writ version` prints the version stamped into that build.
+
+The Windows installer is per-user and does not ask for administrator rights. It copies `writ.exe` to `%LOCALAPPDATA%\Writ`, adds that folder to the user `PATH`, and installs the runtime module at `~/.writ/modules/Writ/Writ.psm1`. Open a new terminal after install. Generated scripts still need PowerShell 7. Build one locally with `installer/build.ps1 -Version 1.2.3 -Runtime win-x64` (or `win-arm64`).

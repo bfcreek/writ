@@ -27,6 +27,7 @@ public class ScriptEntryTests
         Assert.Contains("param([string]$folder, [switch]$ListTools)", script);
         Assert.Contains(".PARAMETER ListTools", script);
         Assert.Contains("if ($MyInvocation.InvocationName -ne '.')", script);
+        Assert.Contains("Join-Path $HOME '.writ' 'modules' 'Writ' 'Writ.psm1'", script);
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public class ScriptEntryTests
         {
             var scriptPath = Path.Combine(temp, "largest-files.ps1");
             File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            File.WriteAllText(Path.Combine(temp, "Writ.psm1"), PowerShellGenerator.RuntimeModuleSource);
+            PowerShellGenerator.InstallRuntimeModule();
             var psi = new ProcessStartInfo("pwsh")
             {
                 RedirectStandardOutput = true,

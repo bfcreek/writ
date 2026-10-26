@@ -18,7 +18,7 @@ public class EmissionTests
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
         Assert.Contains("default", result.Emission.Reason);
-        Assert.Empty(result.Emission.Considered);
+        Assert.Contains(result.Emission.Considered, item => item.Id == EmissionCatalog.CSharpLibrary.Id);
     }
 
     [Fact]
@@ -54,9 +54,19 @@ public class EmissionTests
     }
 
     [Fact]
-    public void Forbidding_the_script_architecture_is_an_error()
+    public void Forbidding_the_script_architecture_selects_the_in_process_library()
     {
         var result = Compile(Pure, """{ "forbid": ["external-process"] }""");
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Equal(EmissionCatalog.CSharpLibrary.Id, result.Emission!.Id);
+        Assert.Contains("static long Double", result.GeneratedCSharp);
+        Assert.Null(result.GeneratedPowerShell);
+    }
+
+    [Fact]
+    public void Forbidding_every_architecture_is_an_error()
+    {
+        var result = Compile(Pure, """{ "forbid": ["external-process", "in-process"] }""");
         Assert.False(result.Success);
         Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "E5001" && diagnostic.Message.Contains("powershell-script") && diagnostic.Message.Contains("external-process"));
     }
@@ -153,7 +163,8 @@ public class EmissionTests
 
             File.Delete(Path.Combine(child, "writ.constraints.json"));
             var fromParent = new CompilationPipeline().Compile(Pure, path);
-            Assert.Contains(fromParent.Diagnostics, diagnostic => diagnostic.Code == "E5001" && diagnostic.Message.Contains("external-process"));
+            Assert.True(fromParent.Success, string.Join(Environment.NewLine, fromParent.Diagnostics));
+            Assert.Equal(EmissionCatalog.CSharpLibrary.Id, fromParent.Emission!.Id);
         }
         finally
         {
@@ -167,7 +178,7 @@ public class EmissionTests
         var result = Compile(Pure, "{ }");
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Equal(EmissionCatalog.PowerShellScript.Id, result.Emission!.Id);
-        Assert.Contains("only emission that satisfies the constraints", result.Emission.Reason);
+        Assert.Contains("stays the default", result.Emission.Reason);
         Assert.Contains("no preferences", result.Emission.Reason);
     }
 
@@ -179,8 +190,14 @@ public class EmissionTests
         Assert.Equal(EmissionCatalog.PowerShellScript.Id, forced.Emission!.Id);
         Assert.Contains("forced", forced.Emission.Reason);
 
-        var unknown = Compile(Pure, "{ }", new EmissionOptions { ForcedId = "csharp-library" });
-        Assert.Contains(unknown.Diagnostics, diagnostic => diagnostic.Code == "E5003" && diagnostic.Message.Contains("csharp-library"));
+        var library = Compile(Pure, "{ }", new EmissionOptions { ForcedId = "csharp-library" });
+        Assert.True(library.Success, string.Join(Environment.NewLine, library.Diagnostics));
+        Assert.Equal(EmissionCatalog.CSharpLibrary.Id, library.Emission!.Id);
+        Assert.Contains("forced", library.Emission.Reason);
+        Assert.Contains("static long Double", library.GeneratedCSharp);
+
+        var unknown = Compile(Pure, "{ }", new EmissionOptions { ForcedId = "python-script" });
+        Assert.Contains(unknown.Diagnostics, diagnostic => diagnostic.Code == "E5003" && diagnostic.Message.Contains("python-script"));
     }
 
     [Fact]

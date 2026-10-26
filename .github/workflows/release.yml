@@ -12,6 +12,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -116,8 +120,70 @@ jobs:
           path: publish/writ-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.zip
           if-no-files-found: error
 
-  release:
+  installer:
+    name: Installer (${{ matrix.rid }})
     needs: [prepare, publish]
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            platform: x64
+          - rid: win-arm64
+            platform: arm64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: writ-${{ matrix.rid }}
+          path: installer/stage
+
+      - name: Stage writ.exe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = Get-ChildItem -Path installer/stage -Filter "writ-*.zip" -File | Select-Object -First 1
+          if (-not $zip) { throw "No published zip in installer/stage." }
+          New-Item -ItemType Directory -Force -Path installer/payload | Out-Null
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath installer/payload -Force
+          Copy-Item src/Writ.Runtime.PowerShell/Writ.psm1 installer/payload/Writ.psm1 -Force
+          if (-not (Test-Path installer/payload/writ.exe)) { throw "The zip did not contain writ.exe." }
+
+      - name: MSI version
+        id: msi
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:VERSION -notmatch '^(\d+\.\d+\.\d+)') { throw "Version '$env:VERSION' has no major.minor.patch." }
+          "version=$($Matches[1])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+
+      - name: Build MSI
+        shell: pwsh
+        run: >
+          dotnet build installer/Writ.wixproj -c Release
+          -p:Platform=${{ matrix.platform }}
+          -p:MsiVersion=${{ steps.msi.outputs.version }}
+          -p:PackageVersion=${{ needs.prepare.outputs.version }}
+          -p:RuntimeIdentifier=${{ matrix.rid }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: writ-${{ matrix.rid }}-msi
+          path: installer/bin/${{ matrix.platform }}/*.msi
+          if-no-files-found: error
+
+  release:
+    needs: [prepare, publish, installer]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -150,26 +216,81 @@ jobs:
             -o dist
 
       - name: Checksums
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         working-directory: dist
         run: |
           set -euo pipefail
-          sha256sum writ-* > SHA256SUMS
+          expected=(
+            "writ-${VERSION}-win-x64.zip"
+            "writ-${VERSION}-win-arm64.zip"
+            "writ-${VERSION}-linux-x64.zip"
+            "writ-${VERSION}-linux-arm64.zip"
+            "writ-${VERSION}-osx-x64.zip"
+            "writ-${VERSION}-osx-arm64.zip"
+            "writ-${VERSION}-win-x64.msi"
+            "writ-${VERSION}-win-arm64.msi"
+            "Writ.Cli.${VERSION}.nupkg"
+          )
+          missing=0
+          for name in "${expected[@]}"; do
+            if [ ! -f "$name" ]; then
+              echo "Missing $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Release files:"
+            ls -la
+            exit 1
+          fi
+          sha256sum "${expected[@]}" > SHA256SUMS
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         shell: bash
         run: |
           set -euo pipefail
-          args=(release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag)
+          git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}" --force
+          tag_notes=$(git for-each-ref "refs/tags/${TAG}" --format='%(contents)')
+          notes=$(mktemp)
+          {
+            if [ -n "${tag_notes//[$' \t\r\n']/}" ]; then
+              printf '## Release notes\n\n%s\n\n' "$tag_notes"
+            fi
+            cat <<EOF
+          ## Install
+
+          - Windows: \`writ-${VERSION}-win-x64.msi\` or \`writ-${VERSION}-win-arm64.msi\`. Per-user, no administrator prompt. Installs \`writ.exe\` on PATH and the runtime module at \`~/.writ/modules/Writ/Writ.psm1\`.
+          - Other platforms: unzip \`writ-${VERSION}-<rid>.zip\` (\`linux-x64\`, \`linux-arm64\`, \`osx-x64\`, \`osx-arm64\`, \`win-x64\`, \`win-arm64\`). Running \`writ\` installs that same module under \`~/.writ/modules\`.
+          - .NET tool: \`Writ.Cli.${VERSION}.nupkg\`.
+
+          Generated scripts need PowerShell 7. \`writ version\` prints ${VERSION}.
+
+          EOF
+            gh api \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              -f tag_name="$TAG" \
+              --jq .body
+          } > "$notes"
+          args=(release create "$TAG" dist/* --title "$TAG" --notes-file "$notes" --verify-tag)
           if [ "$PRERELEASE" = "true" ]; then
             args+=(--prerelease)
           fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
+            edit=(release edit "$TAG" --notes-file "$notes")
+            if [ "$PRERELEASE" = "true" ]; then
+              edit+=(--prerelease)
+            fi
+            gh "${edit[@]}"
           else
             gh "${args[@]}"
           fi

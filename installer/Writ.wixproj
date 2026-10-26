@@ -1,0 +1,19 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <Platforms>x64;arm64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
+    <InstallerPlatform>$(Platform)</InstallerPlatform>
+    <MsiVersion Condition="'$(MsiVersion)' == ''">0.0.1</MsiVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">$(MsiVersion)</PackageVersion>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$(Platform)</RuntimeIdentifier>
+    <OutputName>writ-$(PackageVersion)-$(RuntimeIdentifier)</OutputName>
+    <OutputPath>$(MSBuildThisFileDirectory)bin\$(Platform)\</OutputPath>
+    <IntermediateOutputPath>$(MSBuildThisFileDirectory)obj\$(Platform)\</IntermediateOutputPath>
+    <DefineConstants>MsiVersion=$(MsiVersion);PackageVersion=$(PackageVersion)</DefineConstants>
+    <!-- ICE61: same-version upgrades so a prerelease and the release that share major.minor.patch replace each other. ICE91: the package is per-user only, so the executable is not meant to follow ALLUSERS. ICE57: the runtime module is under %USERPROFILE%, which SetDirectory assigns; ICE still treats that directory as per-machine. -->
+    <SuppressIces>ICE57;ICE61;ICE91</SuppressIces>
+  </PropertyGroup>
+
+</Project>

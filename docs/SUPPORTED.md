@@ -15,7 +15,7 @@ writ explain <file.writ>
 writ diff <file.writ>
 ```
 
-`writ` here means `dotnet run --project src/Writ.Cli --`. With `--target auto` (the default), compilation accepts the PowerShell script when the constraint files allow it. `powershell` forces that script. `compile` writes `<name>.ps1`, `Writ.psm1`, `<name>.ir.json`, and `<name>.writ.lock.json`.
+`writ` here means `dotnet run --project src/Writ.Cli --`. With `--target auto` (the default), compilation accepts the PowerShell script when the constraint files allow it. `powershell` forces that script. `compile` writes `<name>.ps1`, `<name>.ir.json`, and `<name>.writ.lock.json`, and installs the shared runtime module at `~/.writ/modules/Writ/Writ.psm1`.
 
 ## How a program reads
 

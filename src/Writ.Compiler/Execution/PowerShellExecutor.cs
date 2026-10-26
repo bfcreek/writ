@@ -22,9 +22,9 @@ public sealed class PowerShellExecutor
         Directory.CreateDirectory(folder);
         try
         {
+            PowerShellGenerator.InstallRuntimeModule();
             var scriptPath = Path.Combine(folder, Sanitize(moduleName) + ".ps1");
             File.WriteAllText(scriptPath, generatedScript, new UTF8Encoding(true));
-            File.WriteAllText(Path.Combine(folder, "Writ.psm1"), PowerShellGenerator.RuntimeModuleSource, new UTF8Encoding(true));
             var inputPath = Path.Combine(folder, "input.json");
             File.WriteAllText(inputPath, string.IsNullOrWhiteSpace(inputJson) ? "{}" : inputJson);
             var callLog = Path.Combine(folder, "calls.log");

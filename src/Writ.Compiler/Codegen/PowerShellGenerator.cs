@@ -35,6 +35,34 @@ public sealed partial class PowerShellGenerator
         }
     }
 
+    private static readonly object ModuleInstallGate = new();
+
+    /// <summary>Shared runtime module: <c>~/.writ/modules/Writ/Writ.psm1</c>.</summary>
+    public static string RuntimeModulePath =>
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".writ", "modules", "Writ", "Writ.psm1");
+
+    /// <summary>Writes the embedded runtime module into <see cref="RuntimeModulePath"/> when it differs.</summary>
+    public static string InstallRuntimeModule()
+    {
+        var path = RuntimeModulePath;
+        lock (ModuleInstallGate)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var source = RuntimeModuleSource;
+            if (File.Exists(path) && string.Equals(File.ReadAllText(path), source, StringComparison.Ordinal))
+            {
+                return path;
+            }
+
+            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllText(temporary, source);
+            File.Move(temporary, path, overwrite: true);
+            return path;
+        }
+    }
+
     public string Generate(IrModule module, string? sourcePath = null)
     {
         _functions.Clear();
@@ -88,7 +116,7 @@ public sealed partial class PowerShellGenerator
 
         sb.AppendLine("Set-StrictMode -Version Latest");
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
-        sb.AppendLine("Import-Module (Join-Path $PSScriptRoot 'Writ.psm1') -Force");
+        sb.AppendLine("Import-Module (Join-Path $HOME '.writ' 'modules' 'Writ' 'Writ.psm1') -Force");
         sb.AppendLine("$__IntentWhatIf = if ($env:INTENT_DRY_RUN) { @{ WhatIf = $true } } else { @{} }");
         sb.AppendLine();
 

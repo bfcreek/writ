@@ -335,7 +335,7 @@ public class McpTests
         {
             var scriptPath = Path.Combine(temp, "recover.ps1");
             File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            File.WriteAllText(Path.Combine(temp, "Writ.psm1"), PowerShellGenerator.RuntimeModuleSource);
+            PowerShellGenerator.InstallRuntimeModule();
             var (code, stdout, stderr) = RunPwsh(scriptPath, "-ListTools");
             Assert.True(code == 0, stderr);
             var lines = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -368,7 +368,7 @@ public class McpTests
         {
             var scriptPath = Path.Combine(temp, "hi.ps1");
             File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            File.WriteAllText(Path.Combine(temp, "Writ.psm1"), PowerShellGenerator.RuntimeModuleSource);
+            PowerShellGenerator.InstallRuntimeModule();
             var (code, stdout, stderr) = RunPwsh(scriptPath, "-ListTools");
             Assert.True(code == 0, stderr);
             Assert.Equal("", stdout.Trim());
@@ -393,7 +393,7 @@ public class McpTests
         {
             var scriptPath = Path.Combine(temp, "tally.ps1");
             File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            File.WriteAllText(Path.Combine(temp, "Writ.psm1"), PowerShellGenerator.RuntimeModuleSource);
+            PowerShellGenerator.InstallRuntimeModule();
             var (code, stdout, stderr) = RunScript(scriptPath, new Dictionary<string, string?> { ["INTENT_MCP_LOG"] = log }, "-day", "2026-10-20");
             Assert.True(code == 0, stderr + stdout);
             Assert.Equal("2", stdout.Trim());
@@ -427,7 +427,7 @@ public class McpTests
         {
             var scriptPath = Path.Combine(temp, "tally.ps1");
             File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            File.WriteAllText(Path.Combine(temp, "Writ.psm1"), PowerShellGenerator.RuntimeModuleSource);
+            PowerShellGenerator.InstallRuntimeModule();
             var (code, stdout, stderr) = RunScript(scriptPath, new Dictionary<string, string?>
             {
                 ["INTENT_MCP_LOG"] = log,

@@ -27,7 +27,7 @@ var inputOption = new Option<FileInfo?>("--input")
 
 var targetOption = new Option<string?>("--target")
 {
-    Description = "Emission to write: auto (default) or powershell. auto reads writ.constraints.json and ~/.writ/constraints.json"
+    Description = "Emission to write: auto (default), powershell, or csharp. auto reads writ.constraints.json and ~/.writ/constraints.json"
 };
 
 var frozenOption = new Option<bool>("--frozen")
@@ -161,6 +161,7 @@ var root = new RootCommand("Writ compiler - English source to typed operations")
     versionCommand
 };
 
+PowerShellGenerator.InstallRuntimeModule();
 return root.Parse(args).Invoke();
 
 static CompilationResult? CompileFile(FileInfo file, CompilationPipeline pipeline, bool frozen, bool writeLock, EmissionOptions emission, ModelOptions model)
@@ -384,12 +385,19 @@ static int RunCompile(FileInfo file, DirectoryInfo? outDir, string? target, bool
     var baseName = Path.GetFileNameWithoutExtension(file.Name);
     var written = new List<string>();
     PrintEmission(result.Emission);
-    var scriptPath = Path.Combine(directory, $"{baseName}.ps1");
-    File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-    var modulePath = Path.Combine(directory, "Writ.psm1");
-    File.WriteAllText(modulePath, PowerShellGenerator.RuntimeModuleSource);
-    written.Add(scriptPath);
-    written.Add(modulePath);
+    if (result.GeneratedCSharp is not null)
+    {
+        var csPath = Path.Combine(directory, $"{baseName}.cs");
+        File.WriteAllText(csPath, result.GeneratedCSharp);
+        written.Add(csPath);
+    }
+    else
+    {
+        var scriptPath = Path.Combine(directory, $"{baseName}.ps1");
+        File.WriteAllText(scriptPath, result.GeneratedPowerShell);
+        written.Add(scriptPath);
+        written.Add(PowerShellGenerator.InstallRuntimeModule());
+    }
 
     var irPath = Path.Combine(directory, $"{baseName}.ir.json");
     File.WriteAllText(irPath, pipeline.SerializeIr(result.Ir));
@@ -416,6 +424,11 @@ static int RunExecute(FileInfo file, string entry, FileInfo? inputFile, string? 
     }
 
     PrintEmission(result.Emission);
+    if (result.GeneratedPowerShell is null)
+    {
+        Console.Error.WriteLine("This emission is a C# library. The Writ OS monitor boots it.");
+        return 1;
+    }
 
     string? inputJson = null;
     if (inputFile is not null)
