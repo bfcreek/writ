@@ -1,28 +1,18 @@
-# Asks to run tests, records release notes, bumps the patch version, and pushes an annotated tag.
-# Pushing the tag starts the Release workflow. Commit the working tree first; the tag points at HEAD.
+# Runs tests, writes release notes, commits the working tree, bumps the patch version, and pushes the branch and an annotated tag.
+# Pushing the tag starts the Release workflow. The tag points at that commit.
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-function Read-Yes([string]$Prompt, [bool]$DefaultYes) {
-    $hint = if ($DefaultYes) { "[Y/n]" } else { "[y/N]" }
-    $answer = Read-Host "$Prompt $hint"
-    if ([string]::IsNullOrWhiteSpace($answer)) {
-        return $DefaultYes
-    }
-
-    return $answer -match "^[Yy]"
-}
-
-$dirty = git status --porcelain
+$branch = git rev-parse --abbrev-ref HEAD
 if ($LASTEXITCODE -ne 0) {
-    throw "git status failed ($LASTEXITCODE)."
+    throw "git rev-parse failed ($LASTEXITCODE)."
 }
 
-if ($dirty) {
-    throw "Commit or stash changes before releasing. The tag is the current commit, not the working tree."
+if ($branch -eq "HEAD") {
+    throw "Checkout a branch before releasing."
 }
 
 $versions = @()
@@ -42,29 +32,46 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 Write-Host "Patch bump: v$current -> $tag"
+Write-Host "Branch: $branch"
 Write-Host "Commit: $(git rev-parse --short HEAD) $(git log -1 --format=%s)"
 Write-Host ""
 
-if (Read-Yes "Run tests (dotnet test Writ.sln -c Release)?" $true) {
-    dotnet test Writ.sln -c Release --verbosity minimal
-    if ($LASTEXITCODE -ne 0) {
-        throw "Tests failed ($LASTEXITCODE)."
-    }
-}
-else {
-    Write-Host "Skipping tests."
+Write-Host "Running tests (dotnet test Writ.sln -c Release)."
+dotnet test Writ.sln -c Release --verbosity minimal
+if ($LASTEXITCODE -ne 0) {
+    throw "Tests failed ($LASTEXITCODE)."
 }
 
-Write-Host ""
-Write-Host "Release notes for $tag. Enter a blank line to finish."
+$logArgs = @("log", "--pretty=format:- %s")
+if ($current -ne [version]::new(0, 0, 0)) {
+    $logArgs += "v$current..HEAD"
+}
+
+$subjects = @(git @logArgs)
+if ($LASTEXITCODE -ne 0) {
+    throw "git log failed ($LASTEXITCODE)."
+}
+
 $lines = New-Object System.Collections.Generic.List[string]
-while ($true) {
-    $line = Read-Host
-    if ($line.Length -eq 0) {
-        break
+foreach ($subject in $subjects) {
+    if (-not [string]::IsNullOrWhiteSpace($subject)) {
+        $lines.Add($subject.Trim())
     }
+}
 
-    $lines.Add($line)
+$pending = git status --porcelain
+if ($LASTEXITCODE -ne 0) {
+    throw "git status failed ($LASTEXITCODE)."
+}
+
+if ($pending) {
+    foreach ($row in @($pending)) {
+        if ([string]::IsNullOrWhiteSpace($row) -or $row.Length -lt 4) {
+            continue
+        }
+
+        $lines.Add("- $($row.Substring(3).Trim())")
+    }
 }
 
 if ($lines.Count -eq 0) {
@@ -78,9 +85,37 @@ Write-Host "Tag: $tag"
 Write-Host "Notes:"
 Write-Host $notes
 
-if (-not (Read-Yes "Push $tag to origin and start the release workflow?" $false)) {
-    Write-Host "Stopped."
-    exit 0
+$pending = git status --porcelain
+if ($LASTEXITCODE -ne 0) {
+    throw "git status failed ($LASTEXITCODE)."
+}
+
+if ($pending) {
+    Write-Host "Local changes to commit:"
+    git status --short
+    git add -A
+    if ($LASTEXITCODE -ne 0) {
+        throw "git add failed ($LASTEXITCODE)."
+    }
+
+    $commitFile = New-TemporaryFile
+    try {
+        $utf8 = New-Object System.Text.UTF8Encoding $false
+        $commitMessage = "Release $tag`n`n$notes"
+        [System.IO.File]::WriteAllText($commitFile.FullName, $commitMessage, $utf8)
+        git commit -F $commitFile.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "git commit failed ($LASTEXITCODE)."
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $commitFile.FullName -Force -ErrorAction SilentlyContinue
+    }
+}
+
+git push origin HEAD
+if ($LASTEXITCODE -ne 0) {
+    throw "Branch push failed ($LASTEXITCODE)."
 }
 
 $notesFile = New-TemporaryFile
