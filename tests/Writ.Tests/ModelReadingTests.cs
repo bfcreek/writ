@@ -270,6 +270,55 @@ public class ModelReadingTests
     }
 
     [Fact]
+    public async Task A_mentioned_name_fills_the_next_open_parameter()
+    {
+        var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();
+        var reading = await new InnateLanguageModel().ReadAsync(
+            Request("unzip the archive into the unpacked", operations,
+            [new SymbolInfo("folder", "string"), new SymbolInfo("archive", "string"), new SymbolInfo("unpacked", "string")]));
+        var selection = Assert.Single(reading.Selections);
+        Assert.Equal("pwsh.Expand-Archive", selection.Id);
+        Assert.Equal("archive", selection.Bindings["Path"]);
+        Assert.Equal("unpacked", selection.Bindings["DestinationPath"]);
+    }
+
+    [Fact]
+    public async Task An_alias_in_scope_stands_in_only_when_the_sentence_names_nothing()
+    {
+        var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();
+        var model = new InnateLanguageModel();
+        var symbols = new[] { new SymbolInfo("folder", "string"), new SymbolInfo("restored", "string") };
+
+        var named = await model.ReadAsync(Request("the restored exists", operations, symbols));
+        Assert.Equal("restored", Assert.Single(named.Selections).Bindings["Path"]);
+
+        var implied = await model.ReadAsync(Request("list the files", operations, symbols));
+        Assert.Equal("folder", Assert.Single(implied.Selections).Bindings["Path"]);
+    }
+
+    [Fact]
+    public async Task A_switch_word_is_not_read_as_a_name()
+    {
+        var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();
+        var reading = await new InnateLanguageModel().ReadAsync(
+            Request("the items in the folder, files only", operations,
+            [new SymbolInfo("folder", "string"), new SymbolInfo("files", "list<dynamic>")]));
+        var selection = Assert.Single(reading.Selections);
+        Assert.Equal("pwsh.Get-ChildItem", selection.Id);
+        Assert.Equal("folder", selection.Bindings["Path"]);
+        Assert.Equal("true", selection.Bindings["File"]);
+        Assert.False(selection.Bindings.ContainsKey("Filter"));
+    }
+
+    [Fact]
+    public async Task A_name_without_its_article_still_matches_the_phrase()
+    {
+        var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();
+        var reading = await new InnateLanguageModel().ReadAsync(Request("uptime", operations, []));
+        Assert.Equal("pwsh.Get-Uptime", Assert.Single(reading.Selections).Id);
+    }
+
+    [Fact]
     public async Task An_unrelated_sentence_matches_no_template()
     {
         var operations = CmdletCatalog.Default.AsCatalogEntries().ToList();

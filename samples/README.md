@@ -60,6 +60,7 @@ One area of the language in each file. `When run` is the entry, named `Main`.
 | `host.writ` | Clear, warn, note, pause, `say`, locations, and environment |
 | `failures.writ` | `try`, `if that fails`, `finally`, and `stop with` |
 | `processes.writ` | Start a program, and start, stop, or restart a service. Running the script does not do those things |
+| `shell.writ` | The shell commands: hash, grep, zip and unzip, word count, path parts, a guid, a random number, and the machine and user names, all under the temp folder |
 
 ```powershell
 dotnet run --project src/Writ.Cli -- run samples/constructs/control.writ --entry Main

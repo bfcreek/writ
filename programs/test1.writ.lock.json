@@ -3,7 +3,7 @@
   "sourceHash": "sha256:2eca55043c0015cd01651470ea62a7172d4668bec76eea899f26121cf0dbd796",
   "compilerVersion": "1.0.0",
   "irSchema": "0.7.0",
-  "cmdletCatalogHash": "sha256:1efe28be84850bea21b4c5eda3ceda0945c8438a89553506f8649209dfb21c91",
+  "cmdletCatalogHash": "sha256:fc3c09d06eee5527474f1d4b3d6c08d2faa903593f25d984e830839ea93c0657",
   "capabilities": {},
   "readings": [],
   "emission": "powershell-script"

@@ -402,11 +402,232 @@ public class CommandTests
         the daemon is "spooler"
         halt the daemon
         """, "Stop-Service -Name $daemon")]
+    [InlineData("""
+        the path is "C:/work/a.txt"
+        the ext is the extension of the path
+        """, "Split-Path -Path $path -Extension")]
+    [InlineData("""
+        the path is "C:/work/a.txt"
+        the suffix of the path
+        """, "Split-Path -Path $path -Extension")]
+    [InlineData("""
+        the path is "C:/work/a.txt"
+        the stem is the name without extension of the path
+        """, "Split-Path -Path $path -LeafBase")]
+    [InlineData("""
+        the path is "C:/work/a.txt"
+        the stem of the path
+        """, "Split-Path -Path $path -LeafBase")]
+    [InlineData("""
+        the machine is the computer name
+        """, "[Environment]::MachineName")]
+    [InlineData("""
+        the box is the hostname
+        """, "[Environment]::MachineName")]
+    [InlineData("""
+        the who is the user name
+        """, "[Environment]::UserName")]
+    [InlineData("""
+        Allow changing processes
+
+        the command is "git"
+        run the command
+        """, "Start-Process -FilePath $command")]
     public void Console_and_file_sentences_bind_powershell_commands(string source, string snippet)
     {
         var result = new CompilationPipeline().Compile(source, "gap.writ");
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Contains(snippet, result.GeneratedPowerShell);
+    }
+
+    [Theory]
+    [InlineData("""
+        Allow reading files
+
+        the file is "a.txt"
+        the hash is the hash of the file
+        """, "Get-FileHash -Path $file")]
+    [InlineData("""
+        Allow reading files
+
+        the file is "a.txt"
+        the sum is the checksum of the file
+        """, "Get-FileHash -Path $file")]
+    [InlineData("""
+        Allow reading files
+
+        the file is "a.txt"
+        the pattern is "error"
+        the hits are the lines matching the pattern in the file
+        """, "Select-String -Path $file -Pattern $pattern")]
+    [InlineData("""
+        Allow reading files
+
+        the file is "a.log"
+        the hits are search the file for "timeout", case sensitively
+        """, "Select-String -Path $file -Pattern 'timeout' -CaseSensitive")]
+    [InlineData("""
+        Allow writing files
+
+        the folder is "C:/work"
+        the archive is "C:/work.zip"
+        zip the folder to the archive
+        """, "Compress-Archive -Path $folder -DestinationPath $archive")]
+    [InlineData("""
+        Allow writing files
+
+        the archive is "C:/work.zip"
+        the unpacked is "C:/restored"
+        unzip the archive into the unpacked
+        """, "Expand-Archive -Path $archive -DestinationPath $unpacked")]
+    [InlineData("""
+        Allow network access
+
+        the host is "localhost"
+        the alive is ping the host
+        """, "Test-Connection -TargetName $host_ -Quiet")]
+    [InlineData("""
+        Allow changing processes
+
+        the command is "git"
+        the found is locate the command
+        """, "Get-Command -Name $command")]
+    [InlineData("""
+        Allow changing processes
+
+        the command is "git"
+        the spot is the location of the command
+        """, "Get-Command -Name $command")]
+    [InlineData("""
+        the low is 1
+        the high is 10
+        the roll is a random number from the low to the high
+        """, "Get-Random -Minimum $low -Maximum $high")]
+    [InlineData("""
+        the id is a new guid
+        """, "New-Guid")]
+    [InlineData("""
+        Allow writing files
+
+        the scratch is a temporary file
+        """, "New-TemporaryFile")]
+    [InlineData("""
+        the text is "one two three"
+        the counted is the word count of the text
+        """, "Measure-Object -InputObject $text -Word")]
+    [InlineData("""
+        the text is "one two three"
+        the counted is count the lines in the text
+        """, "Measure-Object -InputObject $text -Line")]
+    [InlineData("""
+        the old is "a"
+        the new is "b"
+        the delta is the differences between the old and the new
+        """, "Compare-Object -ReferenceObject $old -DifferenceObject $new")]
+    [InlineData("""
+        Allow reading files
+
+        the drives are the drives
+        """, "Get-PSDrive -PSProvider 'FileSystem'")]
+    [InlineData("""
+        the up is the uptime
+        """, "Get-Uptime")]
+    [InlineData("""
+        the zone is the time zone
+        """, "Get-TimeZone")]
+    [InlineData("""
+        the format is "yyyy-MM-dd"
+        the stamp is the current date formatted as the format
+        """, "Get-Date -Format $format")]
+    [InlineData("""
+        Allow changing processes
+
+        the text is "hello"
+        copy the text to the clipboard
+        """, "Set-Clipboard -Value $text")]
+    [InlineData("""
+        Allow changing processes
+
+        the pasted is the clipboard contents
+        """, "Get-Clipboard -Raw")]
+    [InlineData("""
+        the data is "[1]" as JSON
+        the json is the data converted to json
+        """, "ConvertTo-Json -InputObject $data")]
+    [InlineData("""
+        Allow changing processes
+
+        the process is "notepad"
+        wait for the process to exit
+        """, "Wait-Process -Name $process")]
+    [InlineData("""
+        Allow changing processes
+
+        the file is "a.txt"
+        open the file
+        """, "Invoke-Item -Path $file")]
+    [InlineData("""
+        Allow changing processes
+
+        shut down the computer
+        """, "Stop-Computer")]
+    [InlineData("""
+        Allow changing processes
+
+        restart the computer
+        """, "Restart-Computer")]
+    public void Shell_sentences_are_read_from_the_catalog(string source, string snippet)
+    {
+        var result = new CompilationPipeline().Compile(source, "shell.writ");
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Contains(snippet, result.GeneratedPowerShell);
+    }
+
+    [Fact]
+    public void A_name_the_sentence_uses_wins_over_an_alias_in_scope()
+    {
+        // "folder" matches Test-Path's alias, but the sentence says "restored".
+        var result = new CompilationPipeline().Compile("""
+            Allow reading files
+
+            When run, returning a boolean
+                the folder is "C:/work"
+                the restored is "C:/work/notes.txt"
+                return the restored exists
+            """, "exists.writ");
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Contains("Test-Path -Path $restored", result.GeneratedPowerShell);
+        Assert.DoesNotContain("Test-Path -Path $folder", result.GeneratedPowerShell);
+    }
+
+    [Fact]
+    public void Shell_commands_need_their_permission()
+    {
+        var result = new CompilationPipeline().Compile("""
+            the folder is "C:/work"
+            the archive is "C:/work.zip"
+            zip the folder to the archive
+            """, "shell.writ");
+        Assert.False(result.Success);
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Code == "E4003");
+        Assert.Contains("Compress-Archive", diagnostic.Message);
+        Assert.Contains("Allow writing files", diagnostic.Message);
+    }
+
+    [Fact]
+    public void Shell_sample_compiles_and_runs()
+    {
+        var path = TestPaths.Sample(Path.Combine("constructs", "shell.writ"));
+        var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Contains("Get-FileHash", result.GeneratedPowerShell);
+        Assert.Contains("Select-String", result.GeneratedPowerShell);
+        Assert.Contains("Compress-Archive", result.GeneratedPowerShell);
+        Assert.Contains("Expand-Archive", result.GeneratedPowerShell);
+
+        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "shell", "Main", null);
+        Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
+        Assert.Equal(10L, Convert.ToInt64(exec.Value));
     }
 
     [Theory]

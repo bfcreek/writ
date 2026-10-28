@@ -131,7 +131,11 @@ public sealed record LiteralExprAst(object? Value, SourceSpan Span) : ExprAst(Sp
 public sealed record NameExprAst(string Name, SourceSpan Span, string? RawPhrase = null) : ExprAst(Span);
 
 /// <summary>"the price of the item" or "Classify of n" — bound as a field or a call.</summary>
-public sealed record OfExprAst(string Name, ExprAst Target, SourceSpan Span) : ExprAst(Span);
+/// <summary>"the price of the item". <see cref="Raw"/> is the sentence as written, kept for the command catalog.</summary>
+public sealed record OfExprAst(string Name, ExprAst Target, SourceSpan Span) : ExprAst(Span)
+{
+    public string? Raw { get; init; }
+}
 
 public sealed record CallExprAst(string Name, IReadOnlyList<ExprAst> Arguments, SourceSpan Span) : ExprAst(Span);
 

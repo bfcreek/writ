@@ -77,8 +77,10 @@ The compiled script has comment-based help from the leading comments, a `param([
 | `the combined`/`joined` path of the folder and the name, `the path joining` them, `the join of` them | Join-Path |
 | `the parent folder`/`directory`/`dir` of the path, or `the containing folder`/`directory` of the path | Split-Path -Parent |
 | `the file name`/`filename`/`base name`/`leaf` of the path | Split-Path -Leaf |
+| `the extension`/`file extension`/`suffix` of the path | Split-Path -Extension |
+| `the name without extension`/`bare name`/`stem` of the path | Split-Path -LeafBase |
 | `the full`/`absolute`/`resolved`/`complete` path of the file | Resolve-Path. Needs `Allow reading files` |
-| `start`/`launch`/`open`/`run` the `program`/`app`/`application`/`executable`/`tool` | Start-Process. Needs `Allow changing processes` |
+| `start`/`launch`/`open`/`run` the `program`/`app`/`application`/`executable`/`tool`/`command`/`exe`/`binary` | Start-Process. Needs `Allow changing processes` |
 | `start`/`launch` the service, `stop`/`kill`/`end`/`halt` the service, `restart the service` | Start-Service, Stop-Service, Restart-Service. `daemon` works as service. Needs `Allow changing processes` |
 | `stop`/`kill`/`end`/`halt` the process | Stop-Process. Needs `Allow changing processes` |
 | `plus`, `minus`, `times`, `divided by`, `modulo` | Arithmetic |
@@ -96,7 +98,8 @@ The compiled script has comment-based help from the leading comments, a `param([
 | `the items where the quantity is greater than 0` | Filter |
 | `the text as JSON` / `the text as CSV` | Parse text into untyped data |
 | `the data as a list of Invoice` / `the outcome as a RetryResult` | Check untyped data against a declared type at run time |
-| `the environment variable HOME`, `the home folder`, `the current folder`, `the temp folder` | Environment |
+| `the environment variable HOME`, `the home folder`, `the current folder`, `the temp folder`, `the script folder` | Environment |
+| `the computer name`/`machine name`/`host name`/`hostname`, `the user name`/`username`/`current user` | `[Environment]::MachineName`, `[Environment]::UserName` |
 | `ask payments to list failed with the day[, retrying up to 3 times]` | Capability call; retry only for reads (`E4006` otherwise) |
 | A phrase that is not one of the forms above | Open intent, matched against the command catalog or rejected |
 
@@ -106,9 +109,53 @@ The compiled script has comment-based help from the leading comments, a `param([
 
 ## Commands (PowerShell cmdlets)
 
-`tools/powershell.catalog.json` is a pinned catalog of cmdlets with English phrases, parameters, and effects: `Get-ChildItem`, `Get-Item`, `Get-Content`, `Set-Content`, `Add-Content`, `New-Item`, `Copy-Item`, `Move-Item`, `Rename-Item`, `Remove-Item`, `Test-Path`, `Join-Path`, `Split-Path`, `Resolve-Path`, `Set-Location`, `Get-Process`, `Stop-Process`, `Start-Process`, `Get-Service`, `Start-Service`, `Stop-Service`, `Restart-Service`, `Get-Date`, `Invoke-RestMethod`, `Invoke-WebRequest`, `Import-Csv`, `Export-Csv`, `Clear-Host`, `Start-Sleep`, `Read-Host`. A sentence like `the items in the folder, files only` is matched against that catalog and becomes `Get-ChildItem -Path $folder -File`. When several phrases match, the most specific one wins. The cmdlet's effect must be granted with `Allow …` (`E4003`). Commands with write effects receive `-WhatIf` under `--dry-run`.
+`tools/powershell.catalog.json` is a pinned catalog of cmdlets with English phrases, parameters, and effects: `Get-ChildItem`, `Get-Item`, `Get-Content`, `Set-Content`, `Add-Content`, `New-Item`, `New-TemporaryFile`, `Copy-Item`, `Move-Item`, `Rename-Item`, `Remove-Item`, `Test-Path`, `Join-Path`, `Split-Path`, `Resolve-Path`, `Set-Location`, `Get-FileHash`, `Select-String`, `Measure-Object`, `Compare-Object`, `Compress-Archive`, `Expand-Archive`, `Get-PSDrive`, `Get-Process`, `Stop-Process`, `Wait-Process`, `Start-Process`, `Invoke-Item`, `Get-Command`, `Get-Service`, `Start-Service`, `Stop-Service`, `Restart-Service`, `Stop-Computer`, `Restart-Computer`, `Get-Date`, `Get-TimeZone`, `Get-Uptime`, `Get-Random`, `New-Guid`, `Invoke-RestMethod`, `Invoke-WebRequest`, `Test-Connection`, `Import-Csv`, `Export-Csv`, `ConvertTo-Json`, `Get-Clipboard`, `Set-Clipboard`, `Clear-Host`, `Start-Sleep`, `Read-Host`. A sentence like `the items in the folder, files only` is matched against that catalog and becomes `Get-ChildItem -Path $folder -File`. When several phrases match, the most specific one wins. The cmdlet's effect must be granted with `Allow …` (`E4003`). Commands with write effects receive `-WhatIf` under `--dry-run`. `writ tools list <file>` counts the catalog and `writ tools inspect <file> pwsh.<Name>` prints one cmdlet's phrases, parameters, and aliases.
 
 The sentence table's console, file, path, process, and service rows are recognized directly, including the verb and noun variants written there. A looser sentence that does not fit one of those shapes is still read from the catalog. A program that uses one of the direct sentences compiles to PowerShell.
+
+A catalog parameter is filled from the sentence. A name the sentence uses wins over one that is merely in scope: first a name that matches the parameter or one of its aliases (`the file` for `-Path`), then quoted text, then any other name the sentence mentions, in the order it is said (`unzip the archive into the unpacked` fills `-DestinationPath` with `unpacked`). Only when the sentence names nothing for a parameter does an in-scope name that matches an alias stand in (`list the files` with a `folder` defined). Words that belong to the phrase or to a switch (`files only`) are not names. A sentence of the shape `the X of the Y` where `Y` is text, a number, or a list, and `X` is not one of its fields, is read from the catalog too: `the hash of the file`, `the word count of the text`.
+
+### Shell commands
+
+The everyday shell commands, as Writ sentences. Each one is a row of the sentence table or a phrase in the catalog, and each needs the permission in its last column.
+
+| Shell | Writ | PowerShell | Needs |
+|-------|------|------------|-------|
+| `ls`, `find` | `the items in the folder, files only`, `the files in the folder matching the pattern, recursively` | Get-ChildItem | reading files |
+| `cat` | `the contents of the file at the path` | Get-Content -Raw | reading files |
+| `head`, `tail` | `the first 3 of the lines` over a list | Select-Object | — |
+| `grep` | `the lines matching the pattern in the file`, `search the file for "timeout", case sensitively` | Select-String | reading files |
+| `wc` | `the word count of the text`, `count the lines in the text` | Measure-Object | — |
+| `diff` | `the differences between the old and the new` | Compare-Object | — |
+| `sha256sum`, `md5sum` | `the hash of the file`, `the checksum of the file` | Get-FileHash | reading files |
+| `cp`, `mv`, `rm`, `mkdir`, `touch` | `copy`, `move`, `remove`, `create the folder`, `create the file` | Copy-Item, Move-Item, Remove-Item, New-Item | writing files |
+| `mktemp` | `a temporary file` | New-TemporaryFile | writing files |
+| `zip`, `tar -c` | `zip the folder to the archive` | Compress-Archive | writing files |
+| `unzip`, `tar -x` | `unzip the archive into the unpacked` | Expand-Archive | writing files |
+| `pwd`, `cd` | `the current folder`, `go to the folder` | Get-Location, Set-Location | — |
+| `basename`, `dirname` | `the file name of the path`, `the extension of the path`, `the name without extension of the path`, `the parent folder of the path` | Split-Path | — |
+| `realpath` | `the full path of the file` | Resolve-Path | reading files |
+| `test -e` | `the file exists` | Test-Path | reading files |
+| `df` | `the drives` | Get-PSDrive -PSProvider FileSystem | reading files |
+| `ps`, `kill`, `wait` | `the running processes`, `stop the process`, `wait for the process to exit` | Get-Process, Stop-Process, Wait-Process | changing processes |
+| `which` | `locate the command`, `the location of the command` | Get-Command | changing processes |
+| `xdg-open`, `start` | `open the file` | Invoke-Item | changing processes |
+| program launch | `run the command`, `start the program` | Start-Process | changing processes |
+| `systemctl` | `start`/`stop`/`restart the service` | Start-Service, Stop-Service, Restart-Service | changing processes |
+| `shutdown`, `reboot` | `shut down the computer`, `restart the computer` | Stop-Computer, Restart-Computer | changing processes |
+| `ping` | `ping the host` | Test-Connection -Quiet | network access |
+| `curl`, `wget` | `fetch json from the url`, `download the url` | Invoke-RestMethod, Invoke-WebRequest | network access |
+| `date` | `the current date`, `the current date formatted as the format` | Get-Date | — |
+| `uptime` | `the uptime` | Get-Uptime | — |
+| `hostname`, `whoami` | `the computer name`, `the user name` | [Environment] | — |
+| `env`, `echo $HOME` | `the environment variable HOME`, `the home folder` | [Environment] | — |
+| `uuidgen` | `a new guid` | New-Guid | — |
+| `shuf -i` | `a random number from the low to the high` (the high is not included) | Get-Random | — |
+| `pbcopy`, `pbpaste` | `copy the text to the clipboard`, `the clipboard contents` | Set-Clipboard, Get-Clipboard | changing processes |
+| `jq -c` | `the data converted to json` | ConvertTo-Json | — |
+| `sleep`, `clear`, `read` | `wait 2 seconds`, `clear the screen`, `ask the user for "Your name"` | Start-Sleep, Clear-Host, Read-Host | — |
+
+[`samples/constructs/shell.writ`](../samples/constructs/shell.writ) runs the file-side rows under the temp folder.
 
 ## Template readings
 

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace Writ.Compiler.Semantics;
 
@@ -249,14 +249,24 @@ public sealed partial class InnateLanguageModel : ILanguageModel
         foreach (var raw in operation.Description.Split(" | ", StringSplitOptions.RemoveEmptyEntries))
         {
             var phrase = raw.Trim();
-            if (padded.Contains(" " + phrase + " ", StringComparison.Ordinal)
-                || padded.Contains(" " + phrase + ",", StringComparison.Ordinal))
+            if (Contains(padded, phrase))
             {
                 best = Math.Max(best, phrase.Length);
+                continue;
+            }
+
+            // A name read from the sentence has lost its article: "the uptime" arrives as "uptime".
+            if (phrase.StartsWith("the ", StringComparison.Ordinal) && Contains(padded, phrase[4..]))
+            {
+                best = Math.Max(best, phrase.Length - 4);
             }
         }
 
         return best;
+
+        static bool Contains(string padded, string phrase) =>
+            padded.Contains(" " + phrase + " ", StringComparison.Ordinal)
+            || padded.Contains(" " + phrase + ",", StringComparison.Ordinal);
     }
 
     private static bool ClauseMentions(string clause, CatalogEntry operation)
@@ -292,13 +302,23 @@ public sealed partial class InnateLanguageModel : ILanguageModel
         return true;
     }
 
+    /// <summary>
+    /// Pairs the operation's parameters with the names the sentence uses. A name the sentence mentions
+    /// always wins over one that is merely in scope: first by alias, then quoted text, then the remaining
+    /// mentioned names in the order they are said. Only when the sentence names nothing for a parameter
+    /// does an in-scope name that matches an alias stand in, as in "list the files" with a folder defined.
+    /// </summary>
     private static Dictionary<string, string> BindArguments(CatalogEntry operation, string clause, ModelRequest request)
     {
         var bindings = new Dictionary<string, string>(StringComparer.Ordinal);
         var padded = " " + clause + " ";
         var used = new HashSet<string>(StringComparer.Ordinal);
         var quoted = QuotedRegex().Match(clause);
-        foreach (var argument in operation.Arguments ?? [])
+        var arguments = operation.Arguments ?? [];
+
+        bool IsSwitch(string argument) => operation.SwitchArguments?.Contains(argument, StringComparer.Ordinal) == true;
+        bool Mentioned(string symbol) => padded.Contains(" " + symbol.ToLowerInvariant() + " ", StringComparison.Ordinal);
+        List<string> Names(string argument)
         {
             var names = new List<string> { argument };
             if (operation.ArgumentAliases is not null && operation.ArgumentAliases.TryGetValue(argument, out var aliases))
@@ -306,50 +326,114 @@ public sealed partial class InnateLanguageModel : ILanguageModel
                 names.AddRange(aliases);
             }
 
-            if (operation.SwitchArguments?.Contains(argument, StringComparer.Ordinal) == true)
+            return names;
+        }
+
+        void Bind(string argument, string symbol)
+        {
+            bindings[argument] = symbol;
+            used.Add(symbol);
+        }
+
+        // Switches are present or absent; aliases are read from the sentence itself.
+        foreach (var argument in arguments.Where(IsSwitch))
+        {
+            if (Names(argument).Any(name => padded.Contains(" " + name.ToLowerInvariant() + " ", StringComparison.Ordinal)))
             {
-                if (names.Any(name => padded.Contains(" " + name.ToLowerInvariant() + " ", StringComparison.Ordinal)))
-                {
-                    bindings[argument] = "true";
-                }
-
-                continue;
+                bindings[argument] = "true";
             }
+        }
 
+        var open = arguments.Where(argument => !IsSwitch(argument)).ToList();
+
+        // 1. A mentioned name that matches the parameter or one of its aliases.
+        foreach (var argument in open)
+        {
+            var names = Names(argument);
             var symbol = request.Symbols.FirstOrDefault(candidate =>
-                !used.Contains(candidate.Name) &&
-                padded.Contains(" " + candidate.Name.ToLowerInvariant() + " ", StringComparison.Ordinal) &&
-                names.Any(name => Same(name, candidate.Name)));
-            symbol ??= request.Symbols.FirstOrDefault(candidate =>
-                !used.Contains(candidate.Name) &&
-                names.Any(name => Same(name, candidate.Name)));
+                !used.Contains(candidate.Name) && Mentioned(candidate.Name) && names.Any(name => Same(name, candidate.Name)));
             if (symbol is not null)
             {
-                bindings[argument] = symbol.Name;
-                used.Add(symbol.Name);
-                continue;
+                Bind(argument, symbol.Name);
+            }
+        }
+
+        // 2. The quoted text, for the first parameter still open.
+        if (quoted.Success && open.FirstOrDefault(argument => !bindings.ContainsKey(argument)) is { } quotable)
+        {
+            bindings[quotable] = quoted.Value;
+        }
+
+        // 3. "unzip the archive into the unpacked": a mentioned name no alias claimed fills the next open
+        //    parameter, in the order the sentence says it, rather than being dropped. Words that belong to
+        //    the matched phrase or to a switch ("files only") are not names.
+        var free = padded;
+        foreach (var phrase in operation.Description.Split(" | ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            free = Blank(free, phrase);
+            if (phrase.StartsWith("the ", StringComparison.Ordinal))
+            {
+                free = Blank(free, phrase[4..]);
+            }
+        }
+
+        foreach (var alias in arguments.Where(IsSwitch).SelectMany(Names))
+        {
+            free = Blank(free, alias.ToLowerInvariant());
+        }
+
+        var leftover = request.Symbols
+            .Select(candidate => (candidate.Name, At: free.IndexOf(" " + candidate.Name.ToLowerInvariant() + " ", StringComparison.Ordinal)))
+            .Where(found => found.At >= 0 && !used.Contains(found.Name))
+            .OrderBy(found => found.At)
+            .Select(found => found.Name)
+            .ToList();
+        var positional = operation.Id.StartsWith("pwsh.", StringComparison.Ordinal)
+            ? open
+            : open.Take(1).ToList();
+        foreach (var argument in positional.Where(argument => !bindings.ContainsKey(argument)))
+        {
+            if (leftover.Count == 0)
+            {
+                break;
             }
 
-            if (quoted.Success && !bindings.ContainsValue(quoted.Value))
-            {
-                bindings[argument] = quoted.Value;
-                continue;
-            }
+            Bind(argument, leftover[0]);
+            leftover.RemoveAt(0);
+        }
 
-            if (argument == operation.Arguments![0])
+        // 4. An in-scope name that matches an alias, when the sentence named nothing for the parameter.
+        foreach (var argument in open.Where(argument => !bindings.ContainsKey(argument)))
+        {
+            var names = Names(argument);
+            var symbol = request.Symbols.FirstOrDefault(candidate =>
+                !used.Contains(candidate.Name) && names.Any(name => Same(name, candidate.Name)));
+            if (symbol is not null)
             {
-                var mentioned = request.Symbols.FirstOrDefault(candidate =>
-                    !used.Contains(candidate.Name) &&
-                    padded.Contains(" " + candidate.Name.ToLowerInvariant() + " ", StringComparison.Ordinal));
-                if (mentioned is not null)
-                {
-                    bindings[argument] = mentioned.Name;
-                    used.Add(mentioned.Name);
-                }
+                Bind(argument, symbol.Name);
             }
         }
 
         return bindings;
+    }
+
+    /// <summary>Replaces every word-bounded occurrence of <paramref name="phrase"/> with spaces, keeping positions.</summary>
+    private static string Blank(string padded, string phrase)
+    {
+        if (phrase.Length == 0)
+        {
+            return padded;
+        }
+
+        var needle = " " + phrase + " ";
+        var index = padded.IndexOf(needle, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            padded = padded[..(index + 1)] + new string(' ', phrase.Length) + padded[(index + 1 + phrase.Length)..];
+            index = padded.IndexOf(needle, index + 1, StringComparison.Ordinal);
+        }
+
+        return padded;
     }
 
     private static bool Same(string alias, string symbol)

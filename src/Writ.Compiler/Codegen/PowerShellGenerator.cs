@@ -876,6 +876,8 @@ public sealed partial class PowerShellGenerator
                 case "currentFolder": return "([string](Get-Location).Path)";
                 case "tempFolder": return "([string][System.IO.Path]::GetTempPath())";
                 case "scriptFolder": return "([string]$PSScriptRoot)";
+                case "machineName": return "([string][Environment]::MachineName)";
+                case "userName": return "([string][Environment]::UserName)";
             }
         }
 

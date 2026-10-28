@@ -1,0 +1,62 @@
+# The shell commands: hash a file, grep it, zip and unzip it, count words,
+# split a path, and read the machine and user names. Everything happens under the temp folder.
+# Running returns 10.
+Allow reading files and writing files
+
+When run, returning an integer
+    the score is 0
+    the folder is the combined path of the temp folder and "writ-sample-shell"
+    if the folder exists
+        remove the folder and everything in it
+    create the folder
+    the file is the combined path of the folder and "notes.txt"
+    the text is "alpha one"
+    save the text into the file
+    the line is "beta two"
+    add the line to the file
+    the line is "gamma three"
+    add the line to the file
+    the hash is the hash of the file
+    the digest is the hash of the hash as a string
+    if the length of the digest is equal to 64
+        increase the score
+    the pattern is "beta"
+    the matches are the lines matching the pattern in the file
+    if the count of the matches is equal to 1
+        increase the score
+    the archive is the combined path of the folder and "notes.zip"
+    zip the file to the archive
+    if the archive exists
+        increase the score
+    the unpacked is the combined path of the folder and "unpacked"
+    unzip the archive into the unpacked
+    the restored is the combined path of the unpacked and "notes.txt"
+    if the restored exists
+        increase the score
+    the body is the contents of the file at the restored
+    the counted is the word count of the body
+    the words are the words of the counted as an integer
+    if the words is equal to 6
+        increase the score
+    the ext is the extension of the file
+    if the ext is equal to ".txt"
+        increase the score
+    the stem is the name without extension of the file
+    if the stem is equal to "notes"
+        increase the score
+    the machine is the computer name
+    the who is the user name
+    if the length of the machine is greater than 0 and the length of the who is greater than 0
+        increase the score
+    the id is a new guid
+    the tag is the id as a string
+    if the length of the tag is equal to 36
+        increase the score
+    the low is 1
+    the high is 7
+    the roll is a random number from the low to the high
+    if the roll is at least 1 and the roll is less than 7
+        increase the score
+    say "{the stem}{the ext} on {the machine}: {the words} words, roll {the roll}"
+    remove the folder and everything in it
+    return the score

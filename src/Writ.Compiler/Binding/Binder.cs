@@ -497,7 +497,10 @@ public sealed partial class Binder
 
         foreach (var fixedArgument in entry.Fixed)
         {
-            arguments.Add(new IrNamedArgument(fixedArgument.Key, new IrLiteral(fixedArgument.Value, span, IrPrimitiveType.Boolean, Provenance.ResolvedByModel)));
+            IrNode fixedValue = fixedArgument.Value is bool flag
+                ? new IrLiteral(flag, span, IrPrimitiveType.Boolean, Provenance.ResolvedByModel)
+                : new IrLiteral(fixedArgument.Value.ToString(), span, IrPrimitiveType.String, Provenance.ResolvedByModel);
+            arguments.Add(new IrNamedArgument(fixedArgument.Key, fixedValue));
         }
 
         return new IrCommand(
@@ -1583,13 +1586,18 @@ public sealed partial class Binder
         return new IrVar(name.Name, name.Span, IrErrorType.Instance);
     }
 
-    /// <summary>"the home folder", "the current folder", "the temp folder" — places every script needs.</summary>
+    /// <summary>
+    /// "the home folder", "the current folder", "the temp folder", "the computer name", "the user name" —
+    /// places and names every script needs. The shell equivalents are pwd, hostname, and whoami.
+    /// </summary>
     private static string? WellKnownPlace(string name) => name switch
     {
         "homeFolder" or "homeDirectory" or "userProfile" => "homeFolder",
         "currentFolder" or "currentDirectory" or "workingFolder" or "workingDirectory" => "currentFolder",
         "tempFolder" or "temporaryFolder" or "tempDirectory" => "tempFolder",
         "scriptFolder" or "scriptDirectory" => "scriptFolder",
+        "computerName" or "machineName" or "hostName" or "hostname" => "machineName",
+        "userName" or "username" or "currentUser" or "loginName" => "userName",
         _ => null
     };
 
@@ -1622,8 +1630,22 @@ public sealed partial class Binder
             }
         }
 
+        // "the hash of the file" or "the word count of the text": a string, a number, or a list has no
+        // fields, so the sentence as written is offered to the command catalog before it is rejected.
+        if (expr.Raw is not null && target.Type is IrPrimitiveType or IrListType && !HasFields(target.Type))
+        {
+            var implied = BindImpliedOperation(expr.Raw, expr.Span, scope);
+            if (implied is not null)
+            {
+                return implied;
+            }
+        }
+
         return BindFieldAccessOn(target, expr.Name, expr.Span);
     }
+
+    private static bool HasFields(IrType type) =>
+        type is IrRecordType or IrDynamicType or IrPrimitiveType { Name: "table" or "object" };
 
     private IrNode BindHostCommand(CallExprAst call, List<IrNode> args)
     {
@@ -1651,6 +1673,10 @@ public sealed partial class Binder
                 return One(call, args, "the parent folder of", "Split-Path", IrPrimitiveType.String, EffectKind.Pure, "Path", IrPrimitiveType.String, Switch(call, "Parent"));
             case "leaf":
                 return One(call, args, "the file name of", "Split-Path", IrPrimitiveType.String, EffectKind.Pure, "Path", IrPrimitiveType.String, Switch(call, "Leaf"));
+            case "extension":
+                return One(call, args, "the extension of", "Split-Path", IrPrimitiveType.String, EffectKind.Pure, "Path", IrPrimitiveType.String, Switch(call, "Extension"));
+            case "stem":
+                return One(call, args, "the name without extension of", "Split-Path", IrPrimitiveType.String, EffectKind.Pure, "Path", IrPrimitiveType.String, Switch(call, "LeafBase"));
             case "resolve":
                 return One(call, args, "the full path of", "Resolve-Path", IrDynamicType.Instance, EffectKind.FileSystemRead, "Path", IrPrimitiveType.String);
             case "join":

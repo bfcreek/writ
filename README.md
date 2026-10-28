@@ -87,6 +87,22 @@ When run, given a folder which is a string, returning a list of string
 
 `Describe` lives in [`samples/files/folder-helpers.writ`](samples/files/folder-helpers.writ) and returns `"{the name} ({the size} bytes)"`.
 
+## Shell commands
+
+The everyday shell commands are sentences too. [`samples/constructs/shell.writ`](samples/constructs/shell.writ) hashes a file, greps it, zips and unzips it, and counts its words:
+
+```text
+the hash is the hash of the file
+the matches are the lines matching the pattern in the file
+zip the file to the archive
+unzip the archive into the unpacked
+the counted is the word count of the body
+the ext is the extension of the file
+the machine is the computer name
+```
+
+Those become `Get-FileHash`, `Select-String`, `Compress-Archive`, `Expand-Archive`, `Measure-Object`, `Split-Path -Extension`, and `[Environment]::MachineName`. `ping the host`, `locate the command`, `the drives`, `the uptime`, `a new guid`, `a random number from the low to the high`, `copy the text to the clipboard`, `wait for the process to exit`, `open the file`, and `restart the computer` are there as well, each behind its `Allow`. `writ tools list <file.writ>` prints every command and marks the ones a program has not allowed. The full table is in [docs/SUPPORTED.md](docs/SUPPORTED.md#shell-commands).
+
 ## A tool
 
 [`samples/payments/recover-failures.writ`](samples/payments/recover-failures.writ) binds a capability manifest and calls it with `ask`.

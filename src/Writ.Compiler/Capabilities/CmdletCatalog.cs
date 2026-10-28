@@ -14,7 +14,7 @@ public sealed record CmdletEntry(
     EffectKind Effect,
     IrType Output,
     IReadOnlyList<CmdletParameter> Parameters,
-    IReadOnlyDictionary<string, bool> Fixed);
+    IReadOnlyDictionary<string, object> Fixed);
 
 /// <summary>
 /// The pinned list of PowerShell commands a program may bind. The compiler reads this file;
@@ -60,12 +60,18 @@ public sealed class CmdletCatalog
                 }
             }
 
-            var fixedArguments = new Dictionary<string, bool>(StringComparer.Ordinal);
+            // A fixed argument is a switch (true) or a constant text value, such as -PSProvider FileSystem.
+            var fixedArguments = new Dictionary<string, object>(StringComparer.Ordinal);
             if (element.TryGetProperty("fixed", out var fixedObject))
             {
                 foreach (var property in fixedObject.EnumerateObject())
                 {
-                    fixedArguments[property.Name] = property.Value.GetBoolean();
+                    fixedArguments[property.Name] = property.Value.ValueKind switch
+                    {
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        _ => property.Value.GetString() ?? ""
+                    };
                 }
             }
 

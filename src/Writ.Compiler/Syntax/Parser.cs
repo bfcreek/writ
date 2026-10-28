@@ -686,6 +686,23 @@ public sealed partial class Parser
         ["leaf", "of"]
     ];
 
+    private static readonly string[][] ExtensionHeads =
+    [
+        ["extension", "of"],
+        ["file", "extension", "of"],
+        ["suffix", "of"]
+    ];
+
+    private static readonly string[][] StemHeads =
+    [
+        ["name", "without", "extension", "of"],
+        ["name", "without", "the", "extension", "of"],
+        ["file", "name", "without", "extension", "of"],
+        ["file", "name", "without", "the", "extension", "of"],
+        ["bare", "name", "of"],
+        ["stem", "of"]
+    ];
+
     private static readonly string[][] ResolveHeads =
     [
         ["full", "path", "of"],
@@ -882,6 +899,13 @@ public sealed partial class Parser
 
         Advance();
         var second = ParseOperand();
+        if (kind == "copy" && second is NameExprAst { Name: "clipboard" })
+        {
+            // "copy the text to the clipboard" is Set-Clipboard, read from the catalog, not Copy-Item.
+            _current = mark;
+            return null;
+        }
+
         var value = pathFirst ? second : first;
         var path = pathFirst ? first : second;
         return Host(kind, start, second.Span, value, path);
@@ -1023,10 +1047,22 @@ public sealed partial class Parser
             return Host("parent", start, path.Span, path);
         }
 
+        if (TakeHead(StemHeads))
+        {
+            var path = ParseUnary();
+            return Host("stem", start, path.Span, path);
+        }
+
         if (TakeHead(LeafHeads))
         {
             var path = ParseUnary();
             return Host("leaf", start, path.Span, path);
+        }
+
+        if (TakeHead(ExtensionHeads))
+        {
+            var path = ParseUnary();
+            return Host("extension", start, path.Span, path);
         }
 
         if (TakeHead(ResolveHeads))
@@ -1075,7 +1111,8 @@ public sealed partial class Parser
     private bool PathHeadAhead()
     {
         var index = WordAt(_current, "the", "a", "an") ? _current + 1 : _current;
-        return AnyHead(index, ParentHeads) || AnyHead(index, LeafHeads) || AnyHead(index, ResolveHeads) || AnyHead(index, JoinHeads);
+        return AnyHead(index, ParentHeads) || AnyHead(index, LeafHeads) || AnyHead(index, StemHeads) || AnyHead(index, ExtensionHeads)
+            || AnyHead(index, ResolveHeads) || AnyHead(index, JoinHeads);
     }
 
     private bool AnyHead(int index, string[][] heads)
@@ -1134,7 +1171,7 @@ public sealed partial class Parser
         noun = noun.ToLowerInvariant();
         var starting = verb is "start" or "launch" or "open" or "run";
         var stopping = verb is "stop" or "kill" or "end" or "halt" or "abort";
-        var program = noun is "program" or "app" or "application" or "executable" or "tool";
+        var program = noun is "program" or "app" or "application" or "executable" or "tool" or "command" or "exe" or "binary";
         var service = noun is "service" or "daemon";
         var process = noun is "process";
         if (program && starting)
@@ -1199,6 +1236,19 @@ public sealed partial class Parser
 
     private ExprAst Host(string name, SourceSpan start, SourceSpan end, params ExprAst[] args) =>
         new CallExprAst("writ.host." + name, args, Combine(start, end));
+
+    /// <summary>The tokens from <paramref name="from"/> up to the current one, as the sentence was written.</summary>
+    private string RawText(int from)
+    {
+        var parts = new List<string>();
+        for (var i = from; i < _current && i < _tokens.Count; i++)
+        {
+            var token = _tokens[i];
+            parts.Add(token.Kind == TokenKind.StringLiteral ? $"\"{token.Text}\"" : token.Text);
+        }
+
+        return string.Join(' ', parts);
+    }
 
     private bool WordAt(int index, params string[] words)
     {
@@ -2133,6 +2183,7 @@ public sealed partial class Parser
     private ExprAst ParseNounPhrase()
     {
         var start = Peek().Span;
+        var startIndex = _current;
         var article = Match(TokenKind.The) || Match(TokenKind.A) || Match(TokenKind.An);
         if (TryParseConstructNoun(start, article) is { } noun)
         {
@@ -2222,7 +2273,7 @@ public sealed partial class Parser
         if (Match(TokenKind.Of))
         {
             var target = ParsePrimary();
-            return new OfExprAst(name.Value.Camel, target, Combine(start, target.Span));
+            return new OfExprAst(name.Value.Camel, target, Combine(start, target.Span)) { Raw = RawText(startIndex) };
         }
 
         if (Match(TokenKind.With))

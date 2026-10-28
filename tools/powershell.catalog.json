@@ -1,9 +1,9 @@
 {
-  "version": "pwsh-7-pinned-2",
+  "version": "pwsh-7-pinned-3",
   "cmdlets": [
     {
       "name": "Get-ChildItem",
-      "phrases": ["items in", "files in", "children of", "contents of", "list the files", "list the items", "entries in"],
+      "phrases": ["items in", "files in", "children of", "contents of", "list the files", "list the items", "entries in", "find the files in", "find files in", "list the folder"],
       "effect": "filesystem-read",
       "output": "list of dynamic",
       "parameters": [
@@ -25,7 +25,7 @@
     },
     {
       "name": "Get-Content",
-      "phrases": ["contents of the file", "text of the file", "read the file", "lines of the file", "read the text"],
+      "phrases": ["contents of the file", "text of the file", "read the file", "lines of the file", "read the text", "content of the file", "text in the file"],
       "effect": "filesystem-read",
       "output": "string",
       "fixed": { "Raw": true },
@@ -76,7 +76,7 @@
     },
     {
       "name": "Test-Path",
-      "phrases": ["whether the path exists", "the path exists", "the file exists", "the folder exists", "exists"],
+      "phrases": ["whether the path exists", "the path exists", "the file exists", "the folder exists", "exists", "whether the file exists", "whether the folder exists"],
       "effect": "filesystem-read",
       "output": "boolean",
       "parameters": [
@@ -85,11 +85,11 @@
     },
     {
       "name": "Get-Process",
-      "phrases": ["running processes", "the processes", "list the processes"],
+      "phrases": ["running processes", "the processes", "list the processes", "the process named", "the running programs"],
       "effect": "external-read",
       "output": "list of dynamic",
       "parameters": [
-        { "name": "Name", "type": "string", "aliases": ["name", "process name", "named"] }
+        { "name": "Name", "type": "string", "aliases": ["name", "process name", "named", "process"] }
       ]
     },
     {
@@ -99,6 +99,16 @@
       "output": "void",
       "parameters": [
         { "name": "Name", "type": "string", "required": true, "aliases": ["name", "process", "process name"] }
+      ]
+    },
+    {
+      "name": "Wait-Process",
+      "phrases": ["wait for the process", "wait for the process to exit", "wait for the process to finish", "wait until the process exits", "wait until the process finishes"],
+      "effect": "external-read",
+      "output": "void",
+      "parameters": [
+        { "name": "Name", "type": "string", "required": true, "aliases": ["process", "name", "program", "process name"] },
+        { "name": "Timeout", "type": "integer", "aliases": ["timeout", "seconds", "limit", "deadline"] }
       ]
     },
     {
@@ -112,7 +122,23 @@
     },
     {
       "name": "Get-Date",
-      "phrases": ["the current date", "the current time", "now", "today"],
+      "phrases": ["the current date", "the current time", "now", "today", "the date and time", "the timestamp", "the current timestamp", "the date formatted as", "the time formatted as"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Format", "type": "string", "aliases": ["format", "pattern", "layout", "mask"] }
+      ]
+    },
+    {
+      "name": "Get-TimeZone",
+      "phrases": ["the time zone", "the current time zone", "the timezone", "the local time zone"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": []
+    },
+    {
+      "name": "Get-Uptime",
+      "phrases": ["the uptime", "the system uptime", "the time since boot", "the time since the last boot", "how long the machine has been up", "how long the computer has been up"],
       "effect": "pure",
       "output": "dynamic",
       "parameters": []
@@ -128,11 +154,22 @@
     },
     {
       "name": "Invoke-WebRequest",
-      "phrases": ["download", "fetch the page at", "the page at"],
+      "phrases": ["download", "fetch the page at", "the page at", "fetch the url", "get the page at", "the web page at"],
       "effect": "network-read",
       "output": "dynamic",
       "parameters": [
-        { "name": "Uri", "type": "string", "required": true, "aliases": ["url", "uri", "address"] }
+        { "name": "Uri", "type": "string", "required": true, "aliases": ["url", "uri", "address", "link"] }
+      ]
+    },
+    {
+      "name": "Test-Connection",
+      "phrases": ["ping", "ping the host", "ping the server", "whether the host responds", "whether the host is reachable", "the host is reachable", "the host responds", "reachable", "responds to ping"],
+      "effect": "network-read",
+      "output": "boolean",
+      "fixed": { "Quiet": true },
+      "parameters": [
+        { "name": "TargetName", "type": "string", "required": true, "aliases": ["host", "server", "address", "computer", "target", "hostname", "machine", "name", "ip"] },
+        { "name": "Count", "type": "integer", "aliases": ["count", "times", "attempts", "tries"] }
       ]
     },
     {
@@ -153,6 +190,15 @@
       "parameters": [
         { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["rows", "items", "records", "data"] },
         { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "destination"] }
+      ]
+    },
+    {
+      "name": "ConvertTo-Json",
+      "phrases": ["converted to json", "serialized as json", "serialized to json", "the json text for", "json text for", "written as json", "encoded as json", "as json text"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["data", "value", "object", "record", "items", "rows", "result", "results", "list", "table", "report", "payload"] }
       ]
     },
     {
@@ -197,13 +243,15 @@
     },
     {
       "name": "Split-Path",
-      "phrases": ["the parent folder of", "the file name of", "the leaf of"],
+      "phrases": ["the parent folder of", "the file name of", "the leaf of", "the extension of", "the name without extension of", "the stem of"],
       "effect": "pure",
       "output": "string",
       "parameters": [
         { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "folder"] },
         { "name": "Parent", "type": "switch", "aliases": ["parent folder of"] },
-        { "name": "Leaf", "type": "switch", "aliases": ["file name of", "the leaf of"] }
+        { "name": "Leaf", "type": "switch", "aliases": ["file name of", "the leaf of"] },
+        { "name": "Extension", "type": "switch", "aliases": ["extension of"] },
+        { "name": "LeafBase", "type": "switch", "aliases": ["name without extension of", "stem of"] }
       ]
     },
     {
@@ -216,8 +264,91 @@
       ]
     },
     {
+      "name": "Get-FileHash",
+      "phrases": ["the hash of the file", "the checksum of the file", "the hash of", "the checksum of", "hash the file", "the sha256 of", "the file hash of", "the fingerprint of", "the digest of"],
+      "effect": "filesystem-read",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["file", "path", "filename", "target"] },
+        { "name": "Algorithm", "type": "string", "aliases": ["algorithm", "method", "using"] }
+      ]
+    },
+    {
+      "name": "Select-String",
+      "phrases": ["lines matching", "lines containing", "the lines matching", "the lines containing", "search the file for", "search for", "grep", "find lines containing", "find lines matching", "matches for", "look for"],
+      "effect": "filesystem-read",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["file", "path", "filename", "log", "source"] },
+        { "name": "Pattern", "type": "string", "required": true, "aliases": ["pattern", "regex", "term", "needle", "search", "word", "phrase", "text"] },
+        { "name": "SimpleMatch", "type": "switch", "aliases": ["literally", "exactly", "as plain text", "plainly"] },
+        { "name": "CaseSensitive", "type": "switch", "aliases": ["case sensitively", "matching case", "case sensitive"] }
+      ]
+    },
+    {
+      "name": "Measure-Object",
+      "phrases": ["the word count of", "the line count of", "the character count of", "count the words in", "count the lines in", "count the characters in", "measure the text"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["text", "content", "contents", "value", "string", "body", "document"] },
+        { "name": "Word", "type": "switch", "aliases": ["word count", "words in"] },
+        { "name": "Line", "type": "switch", "aliases": ["line count", "lines in"] },
+        { "name": "Character", "type": "switch", "aliases": ["character count", "characters in"] }
+      ]
+    },
+    {
+      "name": "Compare-Object",
+      "phrases": ["the differences between", "the difference between", "compare", "what changed between", "diff"],
+      "effect": "pure",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "ReferenceObject", "type": "dynamic", "required": true, "aliases": ["reference", "left", "first", "original", "old", "expected", "baseline", "source"] },
+        { "name": "DifferenceObject", "type": "dynamic", "required": true, "aliases": ["difference", "right", "second", "updated", "new", "actual", "current", "target"] }
+      ]
+    },
+    {
+      "name": "Compress-Archive",
+      "phrases": ["zip the folder", "zip the file", "zip the files", "compress the folder", "compress the file", "compress the files", "archive the folder", "archive the files", "zip up"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["folder", "source", "files", "file", "path", "directory", "input"] },
+        { "name": "DestinationPath", "type": "string", "required": true, "aliases": ["archive", "destination", "zip", "target", "output", "zipfile"] },
+        { "name": "Force", "type": "switch", "aliases": ["overwriting", "replacing the archive", "force"] }
+      ]
+    },
+    {
+      "name": "Expand-Archive",
+      "phrases": ["unzip the archive", "unzip the file", "extract the archive", "extract the zip", "expand the archive", "unzip", "unpack the archive"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["archive", "zip", "file", "source", "path", "zipfile"] },
+        { "name": "DestinationPath", "type": "string", "aliases": ["folder", "destination", "target", "directory", "into", "location", "output"] },
+        { "name": "Force", "type": "switch", "aliases": ["overwriting", "replacing existing files", "force"] }
+      ]
+    },
+    {
+      "name": "New-TemporaryFile",
+      "phrases": ["a temporary file", "a new temporary file", "a temp file", "a new temp file", "a scratch file", "a new scratch file"],
+      "effect": "filesystem-write",
+      "output": "dynamic",
+      "parameters": []
+    },
+    {
+      "name": "Get-PSDrive",
+      "phrases": ["the drives", "the disks", "list the drives", "the disk drives", "the free space on", "disk usage", "the mounted drives", "the volumes", "the storage drives"],
+      "effect": "filesystem-read",
+      "output": "list of dynamic",
+      "fixed": { "PSProvider": "FileSystem" },
+      "parameters": [
+        { "name": "Name", "type": "string", "aliases": ["drive", "letter", "disk", "name", "volume"] }
+      ]
+    },
+    {
       "name": "Set-Location",
-      "phrases": ["change to the folder", "set the location to", "go to the folder"],
+      "phrases": ["change to the folder", "set the location to", "go to the folder", "change directory to"],
       "effect": "pure",
       "output": "void",
       "parameters": [
@@ -225,13 +356,33 @@
       ]
     },
     {
+      "name": "Get-Command",
+      "phrases": ["where is the command", "the command named", "locate the command", "find the command", "look up the command", "which command", "the location of the command", "the path to the command", "the path of the command"],
+      "effect": "external-read",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Name", "type": "string", "required": true, "aliases": ["command", "name", "program", "tool", "executable", "cmdlet", "exe"] }
+      ]
+    },
+    {
       "name": "Start-Process",
-      "phrases": ["start the program", "launch the program"],
+      "phrases": ["start the program", "launch the program", "run the program", "run the command", "execute the program", "execute the command", "run the tool", "execute"],
       "effect": "external-write",
       "output": "void",
       "parameters": [
-        { "name": "FilePath", "type": "string", "required": true, "aliases": ["program", "executable", "command"] },
-        { "name": "ArgumentList", "type": "string", "aliases": ["arguments", "args"] }
+        { "name": "FilePath", "type": "string", "required": true, "aliases": ["program", "executable", "command", "app", "application", "tool", "exe", "binary"] },
+        { "name": "ArgumentList", "type": "string", "aliases": ["arguments", "args", "parameters", "options", "flags"] },
+        { "name": "Wait", "type": "switch", "aliases": ["and wait", "waiting for it", "wait for it", "synchronously", "until it finishes"] },
+        { "name": "NoNewWindow", "type": "switch", "aliases": ["in this window", "without a new window", "inline"] }
+      ]
+    },
+    {
+      "name": "Invoke-Item",
+      "phrases": ["open the file", "open the document", "open the item", "launch the file", "open the folder", "open with the default app", "open with the default program"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["file", "path", "document", "item", "folder", "target"] }
       ]
     },
     {
@@ -260,6 +411,54 @@
       "parameters": [
         { "name": "Name", "type": "string", "required": true, "aliases": ["service", "name", "servicename"] }
       ]
+    },
+    {
+      "name": "Stop-Computer",
+      "phrases": ["shut down the computer", "shutdown the computer", "stop the computer", "shut down the machine", "turn off the computer", "power off the computer", "power off"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": []
+    },
+    {
+      "name": "Restart-Computer",
+      "phrases": ["restart the computer", "reboot the computer", "restart the machine", "reboot the machine", "reboot"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": []
+    },
+    {
+      "name": "Get-Clipboard",
+      "phrases": ["the clipboard contents", "the clipboard text", "the text on the clipboard", "read the clipboard", "paste from the clipboard", "what is on the clipboard"],
+      "effect": "external-read",
+      "output": "string",
+      "fixed": { "Raw": true },
+      "parameters": []
+    },
+    {
+      "name": "Set-Clipboard",
+      "phrases": ["to the clipboard", "on the clipboard", "onto the clipboard", "set the clipboard to", "copy to the clipboard"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "content", "contents", "line", "message", "result", "output"] }
+      ]
+    },
+    {
+      "name": "Get-Random",
+      "phrases": ["a random number", "a random integer", "a random number between", "a random number from", "a random whole number"],
+      "effect": "pure",
+      "output": "integer",
+      "parameters": [
+        { "name": "Minimum", "type": "integer", "aliases": ["minimum", "min", "low", "lowest", "floor", "start", "from"] },
+        { "name": "Maximum", "type": "integer", "aliases": ["maximum", "max", "high", "highest", "ceiling", "limit", "end", "to"] }
+      ]
+    },
+    {
+      "name": "New-Guid",
+      "phrases": ["a new guid", "a fresh guid", "a new id", "a unique id", "a new unique id", "a new identifier", "a unique identifier", "a new unique identifier"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": []
     },
     {
       "name": "Clear-Host",

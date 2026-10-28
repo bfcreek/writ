@@ -296,8 +296,16 @@ static int RunToolsList(FileInfo file, bool debug)
         }
     }
 
-    var cmdlets = pipeline.Cmdlets.AsCatalogEntries().Count();
-    Console.WriteLine($"PowerShell cmdlet catalog: {cmdlets} cmdlets ({pipeline.Cmdlets.Hash[..19]}...); use 'writ tools inspect <file> pwsh.<Name>' for one.");
+    var cmdlets = pipeline.Cmdlets.Cmdlets;
+    Console.WriteLine($"PowerShell cmdlet catalog: {cmdlets.Count} cmdlets ({pipeline.Cmdlets.Hash[..19]}...)");
+    foreach (var entry in cmdlets.OrderBy(c => c.Name, StringComparer.Ordinal))
+    {
+        var granted = entry.Effect == Writ.Compiler.Ir.EffectKind.Pure || result.GrantedEffects.Contains(entry.Effect);
+        var phrases = string.Join(" | ", entry.Phrases.Take(3));
+        Console.WriteLine($"  {(granted ? " " : "x")} pwsh.{entry.Name} -> {DescribeType(entry.Output)}  [{entry.Effect}]  {phrases}");
+    }
+
+    Console.WriteLine("'x' marks a command this program has not allowed. Use 'writ tools inspect <file> pwsh.<Name>' for every phrase and parameter.");
     return 0;
 }
 
