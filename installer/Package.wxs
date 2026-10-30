@@ -45,29 +45,5 @@
       </Directory>
     </StandardDirectory>
 
-    <!--
-      The runtime module is shared by every generated script.
-      ~/.writ stays, because constraints and MCP defaults live there too.
-    -->
-    <Directory Id="UserProfileDir" Name="UserProfile">
-      <Directory Id="WritHome" Name=".writ">
-        <Directory Id="WritModules" Name="modules">
-          <Directory Id="WritModuleDir" Name="Writ">
-            <Component Id="WritRuntimeModule" Guid="{C4D8E2A1-6B7F-4A93-9E15-2F0C8D7B6A54}">
-              <File Id="WritPsm1" Source="payload/Writ.psm1" />
-              <RegistryValue
-                  Root="HKCU"
-                  Key="Software\bfcreek\Writ"
-                  Name="ModuleDir"
-                  Type="string"
-                  Value="[WritModuleDir]"
-                  KeyPath="yes" />
-              <RemoveFolder Id="RemoveWritModuleDir" On="uninstall" />
-            </Component>
-          </Directory>
-        </Directory>
-      </Directory>
-    </Directory>
-    <SetDirectory Id="UserProfileDir" Value="[%USERPROFILE]" />
   </Package>
 </Wix>

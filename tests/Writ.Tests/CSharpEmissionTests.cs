@@ -13,19 +13,13 @@ public class CSharpEmissionTests
     [Theory]
     [InlineData("basics/countdown.writ", "Countdown", """{"n":3}""", 3L)]
     [InlineData("basics/fizzbuzz.writ", "FizzBuzz", """{"n":15}""", "FizzBuzz")]
-    public void CSharp_matches_PowerShell(string sample, string entry, string input, object expected)
+    public void CSharp_runs_samples(string sample, string entry, string input, object expected)
     {
         var path = TestPaths.Sample(sample);
         var source = File.ReadAllText(path);
-        var powershell = new CompilationPipeline().Compile(source, path, emission: new EmissionOptions { ForcedId = EmissionCatalog.PowerShellScript.Id });
         var csharp = new CompilationPipeline().Compile(source, path, emission: new EmissionOptions { ForcedId = EmissionCatalog.CSharpLibrary.Id });
-        Assert.True(powershell.Success, string.Join(Environment.NewLine, powershell.Diagnostics));
         Assert.True(csharp.Success, string.Join(Environment.NewLine, csharp.Diagnostics));
-        Assert.Null(csharp.GeneratedPowerShell);
         Assert.Contains("WritProgram", csharp.GeneratedCSharp);
-
-        var pwsh = new PowerShellExecutor().Execute(powershell.GeneratedPowerShell!, entry, entry, input);
-        Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
 
         var method = CompileGuest(csharp.GeneratedCSharp!).GetMethod(entry, BindingFlags.Public | BindingFlags.Static);
         Assert.NotNull(method);
@@ -40,7 +34,6 @@ public class CSharpEmissionTests
             Machine.Unbind();
         }
 
-        Assert.Equal(Normalize(expected), Normalize(pwsh.Value));
         Assert.Equal(Normalize(expected), Normalize(value));
     }
 
@@ -67,15 +60,15 @@ public class CSharpEmissionTests
     }
 
     [Fact]
-    public void A_cmdlet_program_cannot_emit_csharp()
+    public void A_cmdlet_program_emits_csharp()
     {
         var path = TestPaths.Sample(Path.Combine("files", "folder-report.writ"));
         var result = new CompilationPipeline().Compile(
             File.ReadAllText(path),
             path,
             emission: new EmissionOptions { ForcedId = EmissionCatalog.CSharpLibrary.Id });
-        Assert.False(result.Success);
-        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "E5001" && diagnostic.Message.Contains("csharp-library"));
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Contains("InvokeCommand(\"Get-ChildItem\"", result.GeneratedCSharp);
     }
 
     [Fact]

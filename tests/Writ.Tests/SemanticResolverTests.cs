@@ -19,7 +19,7 @@ public class SemanticResolverTests
         Assert.Contains(result.Ir!.Functions[0].Body, n => n is IrAssign { Value: IrSumProjection });
 
         var input = File.ReadAllText(SamplePath(Path.Combine("basics", "input-calculate-total.json")));
-        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "intent-sum", "CalculateTotal", input);
+        var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "CalculateTotal", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(27.54m, Assert.IsType<decimal>(exec.Value));
     }
@@ -34,7 +34,7 @@ public class SemanticResolverTests
         Assert.Contains(result.Ir!.Functions[0].Body, n => n is IrAssign { Value: IrFilter });
 
         var input = File.ReadAllText(SamplePath(Path.Combine("basics", "input-intent-filter.json")));
-        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "intent-filter", "PositiveQuantity", input);
+        var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "PositiveQuantity", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         var list = Assert.IsAssignableFrom<System.Collections.IList>(exec.Value);
         Assert.Equal(2, list.Count);

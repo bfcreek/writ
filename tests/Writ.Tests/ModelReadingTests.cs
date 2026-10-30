@@ -21,9 +21,8 @@ public class ModelReadingTests
         Assert.Equal("integer", Assert.IsType<IrPrimitiveType>(record.Fields[1].Type).Name);
         Assert.Contains(result.Ir.Functions[0].Body, node => node is IrAssign { Value: IrBinary { Left: IrSumProjection } });
 
-        var exec = new PowerShellExecutor().Execute(
-            result.GeneratedPowerShell!,
-            "innate-total",
+        var exec = new MachineExecutor().Execute(
+            result.GeneratedCSharp!,
             "CalculateTotal",
             File.ReadAllText(SamplePath(Path.Combine("basics", "input-calculate-total.json"))));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
@@ -63,7 +62,7 @@ public class ModelReadingTests
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.DoesNotContain(model.Texts, text => text.Equals("subtotal", StringComparison.OrdinalIgnoreCase));
 
-        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "test", "Fixed", """{"items":[]}""");
+        var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "Fixed", """{"items":[]}""");
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(4m, Assert.IsType<decimal>(exec.Value));
     }
@@ -227,12 +226,11 @@ public class ModelReadingTests
         Assert.Equal("list_failed", Assert.IsType<IrCapabilityCall>(sequence.Steps[0]).Operation);
         Assert.Equal("retry", Assert.IsType<IrCapabilityCall>(sequence.Steps[1]).Operation);
 
-        var source = result.GeneratedPowerShell!;
-        Assert.True(source.IndexOf("'list_failed'", StringComparison.Ordinal) < source.IndexOf("'retry'", StringComparison.Ordinal));
+        var source = result.GeneratedCSharp!;
+        Assert.True(source.IndexOf("\"list_failed\"", StringComparison.Ordinal) < source.IndexOf("\"retry\"", StringComparison.Ordinal));
 
-        var exec = new PowerShellExecutor().Execute(
+        var exec = new MachineExecutor().Execute(
             source,
-            "but-first",
             "Recover",
             File.ReadAllText(SamplePath(Path.Combine("payments", "input-but-first.json"))));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
@@ -335,7 +333,7 @@ public class ModelReadingTests
                 return the file contents
             """, "file-contents.writ");
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains("Get-Content", result.GeneratedPowerShell);
+        Assert.Contains("Get-Content", result.GeneratedCSharp);
     }
 
     private static ModelRequest Request(string text, IReadOnlyList<CatalogEntry> operations, IReadOnlyList<SymbolInfo> symbols) =>

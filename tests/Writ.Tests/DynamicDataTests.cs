@@ -20,7 +20,7 @@ public class DynamicDataTests
         Assert.IsType<IrListType>(validate.Type);
 
         var input = System.Text.Json.JsonSerializer.Serialize(new { path = TestPaths.Sample(Path.Combine("data", "invoices.json")) });
-        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "json-total", "Total", input);
+        var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "Total", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(114.75m, Convert.ToDecimal(exec.Value));
         Assert.Contains("Read 3 invoices", exec.Output);
@@ -45,7 +45,7 @@ public class DynamicDataTests
         try
         {
             var input = System.Text.Json.JsonSerializer.Serialize(new { path = broken });
-            var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "json-total", "Total", input);
+            var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "Total", input);
             Assert.False(exec.Success, "the run should fail");
             Assert.Contains(exec.Errors, e => e.Contains("'amount'") && e.Contains("Invoice"));
         }
@@ -61,7 +61,7 @@ public class DynamicDataTests
         var path = TestPaths.Sample(Path.Combine("data", "rest-total.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains("Invoke-RestMethod -Uri $url", result.GeneratedPowerShell!);
+        Assert.Contains("InvokeCommand(\"Invoke-RestMethod\"", result.GeneratedCSharp!);
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class DynamicDataTests
         var result = new CompilationPipeline().Compile(source, "greet.writ");
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var input = """{ "name": "Ada", "tally": 2 }""";
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "greet", "Greet", input);
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "Greet", input);
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Equal("Hello Ada, you have 3 items", pwsh.Value);
     }

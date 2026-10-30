@@ -52,18 +52,6 @@ public sealed record EmissionDecision(
 
 public static class EmissionCatalog
 {
-    public static readonly EmissionPlan PowerShellScript = new()
-    {
-        Id = "powershell-script",
-        Language = "powershell",
-        Approach = "script",
-        Architecture = "external-process",
-        Summary = "PowerShell script run in its own process",
-        Rank = 0,
-        Traits = Traits("powershell", "script", "external-process", "dry-run", "cmdlets"),
-        Blocker = static _ => null
-    };
-
     public static readonly EmissionPlan CSharpLibrary = new()
     {
         Id = "csharp-library",
@@ -71,12 +59,12 @@ public static class EmissionCatalog
         Approach = "library",
         Architecture = "in-process",
         Summary = "C# library loaded in the same process",
-        Rank = 1,
-        Traits = Traits("csharp", "library", "in-process"),
-        Blocker = CSharpGenerator.Unsupported
+        Rank = 0,
+        Traits = Traits("csharp", "library", "in-process", "dry-run", "cmdlets"),
+        Blocker = static _ => null
     };
 
-    public static IReadOnlyList<EmissionPlan> All { get; } = [PowerShellScript, CSharpLibrary];
+    public static IReadOnlyList<EmissionPlan> All { get; } = [CSharpLibrary];
 
     public static IReadOnlySet<string> TraitsVocabulary { get; } = All
         .SelectMany(plan => plan.Traits)
@@ -87,7 +75,7 @@ public static class EmissionCatalog
 
     /// <summary>
     /// <c>auto</c> (or an empty target) lets constraints choose.
-    /// <c>powershell</c> forces the script emission. <c>csharp</c> forces the in-process library.
+    /// <c>csharp</c> forces the in-process library. PowerShell emission has been removed.
     /// </summary>
     public static bool TryParseTarget(string? text, out string? id, out string? error)
     {
@@ -102,11 +90,11 @@ public static class EmissionCatalog
         if (key.Equals("powershell", StringComparison.OrdinalIgnoreCase) ||
             key.Equals("pwsh", StringComparison.OrdinalIgnoreCase) ||
             key.Equals("ps", StringComparison.OrdinalIgnoreCase) ||
-            key.Equals(PowerShellScript.Id, StringComparison.OrdinalIgnoreCase))
+            key.Equals("powershell-script", StringComparison.OrdinalIgnoreCase))
         {
-            id = PowerShellScript.Id;
-            error = null;
-            return true;
+            id = null;
+            error = "PowerShell emission was removed; use csharp";
+            return false;
         }
 
         if (key.Equals("csharp", StringComparison.OrdinalIgnoreCase) ||
@@ -119,7 +107,7 @@ public static class EmissionCatalog
         }
 
         id = null;
-        error = $"Unknown target '{text}'. Use auto, powershell, or csharp.";
+        error = $"Unknown target '{text}'. Use auto or csharp.";
         return false;
     }
 

@@ -14,5 +14,5 @@
       ]
     }
   ],
-  "emission": "powershell-script"
+  "emission": "csharp-library"
 }

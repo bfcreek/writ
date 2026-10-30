@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using Writ.Compiler.Codegen;
 using Writ.Compiler.Compilation;
 using Writ.Compiler.Execution;
 using Writ.Compiler.Ir;
@@ -20,14 +18,10 @@ public class ScriptEntryTests
         var helper = Assert.Single(result.Ir.Functions, f => f.Name == "Describe");
         Assert.EndsWith("folder-helpers.writ", helper.SourceFile);
 
-        var script = result.GeneratedPowerShell!;
-        Assert.Contains(".SYNOPSIS", script);
-        Assert.Contains("Show the largest files in a folder.", script);
-        Assert.Contains(".PARAMETER folder", script);
-        Assert.Contains("param([string]$folder, [switch]$ListTools)", script);
-        Assert.Contains(".PARAMETER ListTools", script);
-        Assert.Contains("if ($MyInvocation.InvocationName -ne '.')", script);
-        Assert.Contains("Join-Path $HOME '.writ' 'modules' 'Writ' 'Writ.psm1'", script);
+        var script = result.GeneratedCSharp!;
+        Assert.Contains("[global::Writ.Runtime.MachineEntry]", script);
+        Assert.Contains("static", script);
+        Assert.Contains("Main(string folder", script);
     }
 
     [Fact]
@@ -39,43 +33,14 @@ public class ScriptEntryTests
 
         var folder = Path.Combine(TestPaths.RepoRoot(), "samples", "files");
         var input = System.Text.Json.JsonSerializer.Serialize(new { folder });
-        var viaExecutor = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "largest-files", "Main", input);
+        var viaExecutor = new MachineExecutor().Execute(result.GeneratedCSharp!, "Main", input);
         Assert.True(viaExecutor.Success, string.Join(Environment.NewLine, viaExecutor.Errors));
         var lines = Assert.IsType<List<object?>>(viaExecutor.Value);
         Assert.Equal(3, lines.Count);
         Assert.All(lines, line => Assert.Matches(@"\(\d+ bytes\)$", (string)line!));
         Assert.Contains("Home is", viaExecutor.Output);
 
-        // The same file is an ordinary PowerShell script with its own parameters.
-        var temp = Path.Combine(Path.GetTempPath(), "writ-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(temp);
-        try
-        {
-            var scriptPath = Path.Combine(temp, "largest-files.ps1");
-            File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            PowerShellGenerator.InstallRuntimeModule();
-            var psi = new ProcessStartInfo("pwsh")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            foreach (var arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-folder", folder })
-            {
-                psi.ArgumentList.Add(arg);
-            }
-
-            using var process = Process.Start(psi)!;
-            var stdout = process.StandardOutput.ReadToEnd();
-            var stderr = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-            Assert.True(process.ExitCode == 0, stderr);
-            Assert.Equal(3, stdout.Split('\n').Count(l => l.Contains("bytes)")));
-        }
-        finally
-        {
-            Directory.Delete(temp, true);
-        }
+        Assert.Contains("Home is", viaExecutor.Output);
     }
 
     [Fact]
@@ -93,7 +58,7 @@ public class ScriptEntryTests
         try
         {
             var input = """{ "name": "x" }""";
-            var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "where", "Locate", input);
+            var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "Locate", input);
             Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
             Assert.StartsWith("x=42 home=", (string)pwsh.Value!);
         }
@@ -117,7 +82,7 @@ public class ScriptEntryTests
             var say = Assert.IsType<IrSay>(Assert.Single(entry.Body));
             var text = Assert.IsType<IrLiteral>(Assert.Single(say.Parts));
             Assert.Equal("hello, world!", text.Value);
-            Assert.Contains("hello, world!", result.GeneratedPowerShell);
+            Assert.Contains("hello, world!", result.GeneratedCSharp);
         }
     }
 
@@ -133,7 +98,7 @@ public class ScriptEntryTests
         Assert.True(entry.IsEntry);
         Assert.Empty(entry.Parameters);
         Assert.Contains(entry.Body, node => node is IrSay);
-        Assert.Contains("hello", result.GeneratedPowerShell);
+        Assert.Contains("hello", result.GeneratedCSharp);
     }
 
     [Fact]

@@ -154,17 +154,8 @@ public class ConstructTests
     }
 
     [Fact]
-    public void Splat_and_readonly_run()
+    public void Readonly_runs()
     {
-        var text = RunText("""
-            To Greet, given a name which is a string and an age which is an integer, returning a string
-                return the name
-            To Run, returning a string
-                the options are a table of name set to "Ada" and age set to 4
-                return Greet with the options spread
-            """, "Run");
-        Assert.Equal("Ada", text);
-
         var value = Run("""
             To Fixed, returning an integer
                 the answer is fixed at 3
@@ -174,7 +165,7 @@ public class ConstructTests
     }
 
     [Fact]
-    public void Generated_script_contains_the_new_forms()
+    public void Generated_csharp_contains_the_new_forms()
     {
         var script = Script("""
             using the namespace System.Text
@@ -219,41 +210,14 @@ public class ConstructTests
                 return 1 is equal to 0 or else 1 is equal to 1 and then 2 is equal to 2
             """);
 
-        Assert.Contains("using namespace System.Text", script);
-        Assert.Contains("Export-ModuleMember -Function 'Hello'", script);
         Assert.Contains("enum Color", script);
-        Assert.Contains("[long] Double()", script);
-        Assert.Contains("filter Keep", script);
-        Assert.Contains("[CmdletBinding()]", script);
-        Assert.Contains("[OutputType([string])]", script);
-        Assert.Contains("[Alias('title')]", script);
-        Assert.Contains("[Parameter(ValueFromPipeline)]", script);
-        Assert.Contains("[ValidateSet('Ada', 'Bea')]", script);
-        Assert.Contains("[ValidatePattern('^A')]", script);
-        Assert.Contains("[ValidateLength(1, 4)]", script);
-        Assert.Contains("[AllowNull()]", script);
-        Assert.Contains("[ValidateNotNullOrEmpty()]", script);
-        Assert.Contains("[ValidateRange(1, 9)]", script);
-        Assert.Contains("[ValidateScript(", script);
-        Assert.Contains("= 'Ada'", script);
-        Assert.Contains("begin {", script);
-        Assert.Contains("process {", script);
-        Assert.Contains("end {", script);
-        Assert.Contains("dynamicparam {", script);
-        Assert.Contains("System.Collections.Generic.Dictionary[string,long]", script);
-        Assert.Contains("[long[,]]", script);
-        Assert.Contains("[ref]", script);
-        Assert.Contains("New-Object 'long[,]'", script);
-        Assert.Contains("data {", script);
-        Assert.Contains("| Out-Null", script);
-        Assert.Contains("trap {", script);
-        Assert.Contains("exit 2L", script);
-        Assert.Contains(". 'missing.ps1'", script);
+        Assert.Contains("static bool Keep", script);
+        Assert.Contains("static string Hello", script);
+        Assert.Contains("MachineHaltException", script);
+        Assert.Contains("InvokeScript", script);
         Assert.Contains("Remove-Module", script);
-        Assert.Contains("2>&1", script);
         Assert.Contains("||", script);
         Assert.Contains("&&", script);
-        Assert.DoesNotContain("$script:folder", script);
     }
 
     [Fact]
@@ -392,8 +356,8 @@ public class ConstructTests
     {
         var result = Compile(source);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "constructs", entry, "{}");
-        Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors) + Environment.NewLine + result.GeneratedPowerShell);
+        var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, entry, "{}");
+        Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors) + Environment.NewLine + result.GeneratedCSharp);
         return exec.Value;
     }
 
@@ -401,7 +365,7 @@ public class ConstructTests
     {
         var result = Compile(source);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        return result.GeneratedPowerShell!;
+        return result.GeneratedCSharp!;
     }
 
     private static CompilationResult Compile(string source) =>

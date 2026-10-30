@@ -21,7 +21,7 @@ public class FailureHandlingTests
         Assert.NotNull(tryNode.Finally);
 
         var input = """{ "day": "2026-10-20" }""";
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "careful-retry", "RecoverCarefully", input);
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "RecoverCarefully", input);
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Equal("retried", pwsh.Value);
         Assert.Contains("Looked at p1", pwsh.Output);
@@ -36,7 +36,7 @@ public class FailureHandlingTests
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "careful-retry", "RecoverCarefully", """{ "day": "2026-10-20" }""");
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "RecoverCarefully", """{ "day": "2026-10-20" }""");
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Equal("failed", pwsh.Value);
         Assert.Contains("Could not retry p1: payments.retry failed: Gateway timeout", pwsh.Output);
@@ -51,7 +51,7 @@ public class FailureHandlingTests
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "recover", "RecoverFailures", """{ "day": "2026-10-20" }""");
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "RecoverFailures", """{ "day": "2026-10-20" }""");
         Assert.False(pwsh.Success);
         Assert.StartsWith("payments.retry (mock): payments.retry failed: Gateway timeout", pwsh.Errors[0]);
     }
@@ -73,7 +73,7 @@ public class FailureHandlingTests
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
-        var pwsh = new PowerShellExecutor { DryRun = true }.Execute(result.GeneratedPowerShell!, "careful-retry", "RecoverCarefully", """{ "day": "2026-10-20" }""");
+        var pwsh = new MachineExecutor { DryRun = true }.Execute(result.GeneratedCSharp!, "RecoverCarefully", """{ "day": "2026-10-20" }""");
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Contains("What if: would call payments.retry", pwsh.Output);
         Assert.Equal(1, pwsh.CapabilityCalls); // list_failed ran; the two retries were only described

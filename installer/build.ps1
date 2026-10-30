@@ -37,8 +37,6 @@ if (-not (Test-Path (Join-Path $payload "writ.exe"))) {
     throw "Publish did not produce payload/writ.exe."
 }
 
-Copy-Item (Join-Path $root "src\Writ.Runtime.PowerShell\Writ.psm1") (Join-Path $payload "Writ.psm1") -Force
-
 dotnet build (Join-Path $PSScriptRoot "Writ.wixproj") `
     -c Release `
     "-p:Platform=$platform" `

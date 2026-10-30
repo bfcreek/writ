@@ -32,7 +32,7 @@ internal static class ScriptCompileStack
 
 /// <summary>
 /// Reads a script's contract without running it. A Writ script is compiled for its signature
-/// and its generated PowerShell; a .ps1 is parsed for <c>param()</c> and <c>.OUTPUTS</c>.
+/// and its generated C#; a .ps1 is parsed for <c>param()</c> and <c>.OUTPUTS</c>.
 /// </summary>
 internal static class ScriptCalls
 {
@@ -92,8 +92,9 @@ internal static class ScriptCalls
         var result = pipeline.Compile(
             File.ReadAllText(full),
             full,
+            emission: new EmissionOptions { ForcedId = EmissionCatalog.CSharpLibrary.Id },
             model: debug is null ? null : new ModelOptions { Debug = debug });
-        if (!result.Success || result.Ir is null || result.GeneratedPowerShell is null)
+        if (!result.Success || result.Ir is null || result.GeneratedCSharp is null)
         {
             var cycle = result.Diagnostics.Any(d => d.Code == "E4012");
             var details = string.Join(" ", result.Diagnostics
@@ -127,7 +128,7 @@ internal static class ScriptCalls
             entry.Parameters.Select(p => new ScriptParameter(p.Name, p.Type, Required: true)).ToList(),
             entry.ReturnType,
             effects,
-            result.GeneratedPowerShell);
+            result.GeneratedCSharp);
     }
 
     private static ResolvedScript ResolvePowerShell(string full)

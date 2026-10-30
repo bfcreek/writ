@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Globalization;
+using System.Text.Json;
 
 namespace Writ.Runtime;
 
@@ -34,9 +35,18 @@ public sealed class MachineHaltException : Exception
 /// Runtime for a C# image. Built-ins match the PowerShell module's conversions.
 /// Console words (<c>say</c>, <c>read</c>, <c>clear</c>, <c>wait</c>) go through <see cref="Io"/>.
 /// </summary>
-public static class Machine
+public static partial class Machine
 {
     private static readonly AsyncLocal<IMachineIo?> Current = new();
+    private static readonly AsyncLocal<AmbientState?> Ambient = new();
+
+    private sealed class AmbientState
+    {
+        public bool DryRun { get; init; }
+        public string ScriptDirectory { get; init; } = "";
+        public string PreviousDirectory { get; init; } = "";
+        public List<string> CallLog { get; } = [];
+    }
 
     public static IMachineIo Io
     {
@@ -44,7 +54,34 @@ public static class Machine
         set => Current.Value = value;
     }
 
-    public static void Unbind() => Current.Value = null;
+    public static bool DryRun => Ambient.Value?.DryRun ?? false;
+
+    public static string ScriptDirectory => Ambient.Value?.ScriptDirectory ?? AppContext.BaseDirectory;
+
+    public static int CapabilityCalls => Ambient.Value?.CallLog.Count ?? 0;
+
+    public static IReadOnlyList<string> CallLog => Ambient.Value?.CallLog ?? [];
+
+    public static void BindAmbient(bool dryRun = false, string? scriptDirectory = null) =>
+        Ambient.Value = new AmbientState
+        {
+            DryRun = dryRun,
+            ScriptDirectory = string.IsNullOrWhiteSpace(scriptDirectory)
+                ? Directory.GetCurrentDirectory()
+                : Path.GetFullPath(scriptDirectory),
+            PreviousDirectory = Directory.GetCurrentDirectory()
+        };
+
+    public static void Unbind()
+    {
+        if (!string.IsNullOrWhiteSpace(Ambient.Value?.PreviousDirectory) && Directory.Exists(Ambient.Value.PreviousDirectory))
+        {
+            Directory.SetCurrentDirectory(Ambient.Value.PreviousDirectory);
+        }
+
+        Current.Value = null;
+        Ambient.Value = null;
+    }
 
     public static void Say(string text) => Io.Say(text);
 
@@ -63,6 +100,7 @@ public static class Machine
     {
         null => "",
         bool flag => flag ? "True" : "False",
+        WritData data => JsonSerializer.Serialize(data.ToDictionary()),
         IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture) ?? "",
         _ => value.ToString() ?? ""
     };

@@ -1,6 +1,6 @@
 # Writ
 
-Writ is an experimental programming language. Source text is constrained English. The compiler turns those sentences into typed operations and then into a PowerShell 7 script. A sentence that leaves a type or an operation unstated is matched against a closed catalog, or rejected. PowerShell cmdlets and MCP tools are ordinary sentences.
+Writ is an experimental programming language. Source text is constrained English. The compiler turns those sentences into typed operations and then into a C# program that runs on the in-process Machine runtime. A sentence that leaves a type or an operation unstated is matched against a closed catalog, or rejected. Catalog commands and MCP tools are ordinary sentences.
 
 This is a language, not a free-form prompt. The supported forms are listed in [docs/SUPPORTED.md](docs/SUPPORTED.md).
 
@@ -125,7 +125,7 @@ The same shape works against an MCP server. See [`samples/payments/mcp-payments.
 
 ## Run a program
 
-Building from source needs the .NET 8 SDK. Running a generated script needs PowerShell 7.
+Building from source needs the .NET 8 SDK. Generated Writ programs run in process; PowerShell is only needed when a program explicitly calls a `.ps1` script or an MCP server command uses `pwsh`.
 
 `writ` below means `dotnet run --project src/Writ.Cli --` until the tool is on your `PATH`.
 
@@ -142,30 +142,27 @@ dotnet run --project src/Writ.Cli -- check samples/errors/retry-a-write.writ
 | Command | What it does |
 |---------|----------------|
 | `writ check <file.writ>` | Accepts the program or prints the diagnostics |
-| `writ compile <file.writ>` | Writes `<name>.ps1`, `<name>.ir.json`, and `<name>.writ.lock.json` |
+| `writ compile <file.writ>` | Writes `<name>.cs`, `<name>.ir.json`, and `<name>.writ.lock.json` |
 | `writ run <file.writ> --entry Name` | Compiles and runs that function. `--input` is a JSON object of arguments |
 | `writ explain <file.writ>` | Shows how each sentence was read |
 | `writ diff <file.writ>` | Reviews semantic changes against the lock file |
 
-`writ compile` installs the shared runtime module at `~/.writ/modules/Writ/Writ.psm1`. The script imports that module and runs as `pwsh ./<name>.ps1 -param value`.
-
-With `--target auto` (the default), constraints in `writ.constraints.json` or `~/.writ/constraints.json` can require or forbid traits of the script. `--target powershell` skips that choice. `--dry-run` passes `-WhatIf` to commands that write.
+With `--target auto` (the default), constraints in `writ.constraints.json` or `~/.writ/constraints.json` can require or forbid traits of the C# target. `--target csharp` is the only explicit target. `--dry-run` reports commands and capability calls that would write.
 
 More programs are grouped under [`samples/`](samples/README.md).
 
 ## Install
 
-The Windows installer is per-user and does not ask for administrator rights. It copies `writ.exe` to `%LOCALAPPDATA%\Writ`, adds that folder to the user `PATH`, and installs the runtime module at `~/.writ/modules/Writ/Writ.psm1`. Open a new terminal after install. Generated scripts still need PowerShell 7. Build one locally with `installer/build.ps1 -Version 1.2.3 -Runtime win-x64` (or `win-arm64`).
+The Windows installer is per-user and does not ask for administrator rights. It copies `writ.exe` to `%LOCALAPPDATA%\Writ` and adds that folder to the user `PATH`. Open a new terminal after install. Build one locally with `installer/build.ps1 -Version 1.2.3 -Runtime win-x64` (or `win-arm64`).
 
 `writ version` prints the version stamped into that build.
 
 ## Further reading
 
 - [docs/SUPPORTED.md](docs/SUPPORTED.md) — commands, types, and the English forms the compiler accepts
-- [docs/constructs.md](docs/constructs.md) — control flow, pronouns, and PowerShell constructs
+- [docs/constructs.md](docs/constructs.md) — control flow, pronouns, and construct forms
 - [samples/README.md](samples/README.md) — every sample, grouped by what it shows
 - [scratch/intent-language-proposal.md](scratch/intent-language-proposal.md) — the design brief
-- [scratch/powershell-plan.md](scratch/powershell-plan.md) — the PowerShell target plan
 
 ## Releases
 

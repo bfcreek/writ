@@ -154,7 +154,6 @@ jobs:
           if (-not $zip) { throw "No published zip in installer/stage." }
           New-Item -ItemType Directory -Force -Path installer/payload | Out-Null
           Expand-Archive -LiteralPath $zip.FullName -DestinationPath installer/payload -Force
-          Copy-Item src/Writ.Runtime.PowerShell/Writ.psm1 installer/payload/Writ.psm1 -Force
           if (-not (Test-Path installer/payload/writ.exe)) { throw "The zip did not contain writ.exe." }
 
       - name: MSI version
@@ -266,11 +265,11 @@ jobs:
             cat <<EOF
           ## Install
 
-          - Windows: \`writ-${VERSION}-win-x64.msi\` or \`writ-${VERSION}-win-arm64.msi\`. Per-user, no administrator prompt. Installs \`writ.exe\` on PATH and the runtime module at \`~/.writ/modules/Writ/Writ.psm1\`.
-          - Other platforms: unzip \`writ-${VERSION}-<rid>.zip\` (\`linux-x64\`, \`linux-arm64\`, \`osx-x64\`, \`osx-arm64\`, \`win-x64\`, \`win-arm64\`). Running \`writ\` installs that same module under \`~/.writ/modules\`.
+          - Windows: \`writ-${VERSION}-win-x64.msi\` or \`writ-${VERSION}-win-arm64.msi\`. Per-user, no administrator prompt. Installs \`writ.exe\` on PATH.
+          - Other platforms: unzip \`writ-${VERSION}-<rid>.zip\` (\`linux-x64\`, \`linux-arm64\`, \`osx-x64\`, \`osx-arm64\`, \`win-x64\`, \`win-arm64\`).
           - .NET tool: \`Writ.Cli.${VERSION}.nupkg\`.
 
-          Generated scripts need PowerShell 7. \`writ version\` prints ${VERSION}.
+          Generated programs run on the Machine runtime in process. \`writ version\` prints ${VERSION}.
 
           EOF
             gh api \

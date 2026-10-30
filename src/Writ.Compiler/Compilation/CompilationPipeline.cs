@@ -92,21 +92,11 @@ public sealed class CompilationPipeline
             return Finish(new CompilationResult(false, diagnostics.Items, ast, ir, null), binder);
         }
 
-        string? powershell = null;
-        string? csharp = null;
-        if (decision.Id.Equals(EmissionCatalog.CSharpLibrary.Id, StringComparison.OrdinalIgnoreCase))
-        {
-            csharp = new CSharpGenerator().Generate(ir, filePath);
-        }
-        else
-        {
-            powershell = new PowerShellGenerator().Generate(ir, filePath);
-        }
+        var csharp = new CSharpGenerator().Generate(ir, filePath);
 
-        return Finish(new CompilationResult(true, diagnostics.Items, ast, ir, powershell), binder) with
+        return Finish(new CompilationResult(true, diagnostics.Items, ast, ir, csharp), binder) with
         {
-            Emission = decision,
-            GeneratedCSharp = csharp
+            Emission = decision
         };
     }
 

@@ -1,5 +1,7 @@
 # Plan: PowerShell equivalency with intrinsic tool support
 
+Superseded: C# is now the sole emission target. The PowerShell generator, executor, and `Writ.psm1` runtime module have been removed. This document remains historical planning context.
+
 Target: an `.writ` file compiles to a runnable `.ps1` (PowerShell 7). Anything a person would write a PowerShell script for can be written as constrained English, checked before it runs, and run with `pwsh`. Tools, including MCP servers, are commands in that script, not a separate mode.
 
 ## 0. Status
@@ -46,7 +48,7 @@ Rules that do not change:
 
 ### 3.2 Runtime module
 
-`Writ.psm1` ships next to the generated script. It holds what `Builtins.cs` holds today (Len, Round, Sum, Append, conversions, SumMap, Filter), plus `Invoke-WritCapability` (the PowerShell counterpart of `CapabilityRuntime.Call`), and later the MCP client. Generated scripts `Import-Module` it by relative path.
+`the legacy runtime module` ships next to the generated script. It holds what `Builtins.cs` holds today (Len, Round, Sum, Append, conversions, SumMap, Filter), plus `Invoke-WritCapability` (the PowerShell counterpart of `CapabilityRuntime.Call`), and later the MCP client. Generated scripts `Import-Module` it by relative path.
 
 ### 3.3 IR additions
 
@@ -73,9 +75,9 @@ Each catalog entry carries its arguments so the model binds symbols in scope, as
 
 ### P0. PowerShell backend for the existing language
 
-- `PowerShellGenerator` over the current IR: records → `class` declarations; functions → `function Name { [CmdletBinding()] param([string]$day, …) … }`; integer → `[long]`, decimal → `[decimal]`, string → `[string]`, boolean → `[bool]`, list → `[System.Collections.Generic.List[T]]`; `if/elseif/else`, `foreach`, `return`.
-- `Writ.psm1` with the built-ins and `Invoke-WritCapability` reading the same mock manifests.
-- `PowerShellExecutor`: writes the script to a temp folder, invokes pwsh, binds JSON input to parameters by name, parses the last JSON line of output as the result.
+- `legacy generator` over the current IR: records → `class` declarations; functions → `function Name { [CmdletBinding()] param([string]$day, …) … }`; integer → `[long]`, decimal → `[decimal]`, string → `[string]`, boolean → `[bool]`, list → `[System.Collections.Generic.List[T]]`; `if/elseif/else`, `foreach`, `return`.
+- `the legacy runtime module` with the built-ins and `Invoke-WritCapability` reading the same mock manifests.
+- `legacy executor`: writes the script to a temp folder, invokes pwsh, binds JSON input to parameters by name, parses the last JSON line of output as the result.
 - Parity suite: every sample runs under both backends and produces the same value. Capability samples count calls the same way.
 
 Acceptance: `writ run samples/basics/calculate-total.writ --target powershell` prints 27.54, `recover-failures` prints 1, `but-first` emits `list_failed` before `retry`, and all existing tests pass under both targets.
@@ -204,8 +206,8 @@ Readings stay inside the compiler. `InnateLanguageModel` matches catalog phrases
 
 P0, in this order:
 
-1. `src/Writ.Compiler/Codegen/PowerShellGenerator.cs` over the current IR, including `IrSequence` and `IrCapabilityCall`.
-2. `src/Writ.Runtime.PowerShell/Writ.psm1` with the built-ins and `Invoke-WritCapability`.
-3. `src/Writ.Compiler/Execution/PowerShellExecutor.cs` and `--target` on `compile` and `run`.
+1. `src/Writ.Compiler/Codegen/legacy generator.cs` over the current IR, including `IrSequence` and `IrCapabilityCall`.
+2. `src/Writ.Runtime.PowerShell/the legacy runtime module` with the built-ins and `Invoke-WritCapability`.
+3. `src/Writ.Compiler/Execution/legacy executor.cs` and `--target` on `compile` and `run`.
 4. `tests/Writ.Tests/PowerShellParityTests.cs`: every sample, both targets, same result.
 5. `docs/SUPPORTED.md`: a PowerShell column.

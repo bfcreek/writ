@@ -1,4 +1,4 @@
 {
-  // Programs in this folder become a PowerShell script.
-  "prefer": ["script", "dry-run"]
+  // Programs in this folder prefer the in-process C# target.
+  "prefer": ["csharp", "in-process"]
 }

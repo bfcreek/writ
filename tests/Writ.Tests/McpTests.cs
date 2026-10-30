@@ -46,7 +46,7 @@ public class McpTests
             var capability = Assert.Single(result.Capabilities);
             Assert.Equal("mcp", capability.Provider);
             Assert.Equal(IrDynamicType.Instance, capability.Operations["list_failed"].ResultType);
-            Assert.Contains("-Provider 'mcp'", result.GeneratedPowerShell!);
+            Assert.Contains("\"mcp\"", result.GeneratedCSharp!);
         }
         finally
         {
@@ -63,10 +63,10 @@ public class McpTests
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var input = """{ "day": "2026-10-20" }""";
 
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "mcp-payments", "RecoverFailures", input);
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "RecoverFailures", input);
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Equal(1L, Convert.ToInt64(pwsh.Value));
-        Assert.Equal(2, pwsh.CapabilityCalls);
+        Assert.Equal(4, pwsh.CapabilityCalls);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class McpTests
         Assert.Equal("mcp", capability.Provider);
         Assert.IsType<IrListType>(capability.Operations["list_failed"].ResultType);
 
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "recover-mcp", "RecoverFailures", """{ "day": "2026-10-20" }""");
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "RecoverFailures", """{ "day": "2026-10-20" }""");
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Equal(1L, Convert.ToInt64(pwsh.Value));
     }
@@ -176,7 +176,7 @@ public class McpTests
             Assert.Equal("payments", capability.Alias);
             Assert.Equal("mcp", capability.Provider);
 
-            var ran = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "recover", "RecoverFailures", """{ "day": "2026-10-20" }""");
+            var ran = new MachineExecutor().Execute(result.GeneratedCSharp!, "RecoverFailures", """{ "day": "2026-10-20" }""");
             Assert.True(ran.Success, string.Join(Environment.NewLine, ran.Errors));
             Assert.Equal(1L, Convert.ToInt64(ran.Value));
         }
@@ -325,7 +325,7 @@ public class McpTests
         var path = TestPaths.Sample(Path.Combine("shared", "recover.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains(".PARAMETER ListTools", result.GeneratedPowerShell);
+        Assert.Contains("InvokeCapability", result.GeneratedCSharp);
 
         var temp = Path.Combine(Path.GetTempPath(), "intent-mcp-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
@@ -333,17 +333,7 @@ public class McpTests
         Environment.SetEnvironmentVariable("INTENT_MCP_LOG", log);
         try
         {
-            var scriptPath = Path.Combine(temp, "recover.ps1");
-            File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            PowerShellGenerator.InstallRuntimeModule();
-            var (code, stdout, stderr) = RunPwsh(scriptPath, "-ListTools");
-            Assert.True(code == 0, stderr);
-            var lines = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            Assert.Equal(2, lines.Length);
-            Assert.StartsWith("payments.list_failed (stdio) ", lines[0]);
-            Assert.StartsWith("payments.retry (stdio) ", lines[1]);
-            Assert.Contains("mcp-test-server.ps1", stdout);
-            Assert.Contains("__Assert-WritMcpTools", result.GeneratedPowerShell);
+            Assert.Equal(2, Assert.Single(result.Capabilities).Operations.Count);
             Assert.False(File.Exists(log));
         }
         finally
@@ -366,12 +356,7 @@ public class McpTests
         Directory.CreateDirectory(temp);
         try
         {
-            var scriptPath = Path.Combine(temp, "hi.ps1");
-            File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            PowerShellGenerator.InstallRuntimeModule();
-            var (code, stdout, stderr) = RunPwsh(scriptPath, "-ListTools");
-            Assert.True(code == 0, stderr);
-            Assert.Equal("", stdout.Trim());
+            Assert.Empty(result.Capabilities);
         }
         finally
         {
@@ -385,18 +370,16 @@ public class McpTests
         var (source, log) = TallyScript();
         var result = new CompilationPipeline().Compile(source, Path.Combine(Path.GetTempPath(), "tally.writ"));
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains("Assert-WritMcpTools -RequiredJson", result.GeneratedPowerShell);
+        Assert.Contains("InvokeCapability", result.GeneratedCSharp);
 
         var temp = Path.Combine(Path.GetTempPath(), "intent-mcp-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temp);
+        Environment.SetEnvironmentVariable("INTENT_MCP_LOG", log);
         try
         {
-            var scriptPath = Path.Combine(temp, "tally.ps1");
-            File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            PowerShellGenerator.InstallRuntimeModule();
-            var (code, stdout, stderr) = RunScript(scriptPath, new Dictionary<string, string?> { ["INTENT_MCP_LOG"] = log }, "-day", "2026-10-20");
-            Assert.True(code == 0, stderr + stdout);
-            Assert.Equal("2", stdout.Trim());
+            var ran = new MachineExecutor().Execute(result.GeneratedCSharp!, "Main", """{ "day": "2026-10-20" }""");
+            Assert.True(ran.Success, string.Join(Environment.NewLine, ran.Errors) + ran.Output);
+            Assert.Equal(2L, Convert.ToInt64(ran.Value));
             var methods = File.ReadAllLines(log);
             var listed = Array.IndexOf(methods, "tools/list");
             var called = Array.IndexOf(methods, "tools/call");
@@ -404,6 +387,7 @@ public class McpTests
         }
         finally
         {
+            Environment.SetEnvironmentVariable("INTENT_MCP_LOG", null);
             Directory.Delete(temp, true);
             if (File.Exists(log))
             {
@@ -423,33 +407,22 @@ public class McpTests
         Directory.CreateDirectory(temp);
         Environment.SetEnvironmentVariable("INTENT_MCP_OMIT", "list_failed");
         Environment.SetEnvironmentVariable("INTENT_MCP_LOG", log);
+        Writ.Runtime.Machine.ResetMcpSessions();
         try
         {
-            var scriptPath = Path.Combine(temp, "tally.ps1");
-            File.WriteAllText(scriptPath, result.GeneratedPowerShell);
-            PowerShellGenerator.InstallRuntimeModule();
-            var (code, stdout, stderr) = RunScript(scriptPath, new Dictionary<string, string?>
-            {
-                ["INTENT_MCP_LOG"] = log,
-                ["INTENT_MCP_OMIT"] = "list_failed"
-            }, "-day", "2026-10-20");
-            Assert.NotEqual(0, code);
-            Assert.Contains("payments.list_failed", stderr + stdout);
-            Assert.Contains("is not available", stderr + stdout);
+            var failed = new MachineExecutor().Execute(result.GeneratedCSharp!, "Main", """{ "day": "2026-10-20" }""");
+            Assert.False(failed.Success);
+            Assert.Contains("payments.list_failed", string.Join(Environment.NewLine, failed.Errors));
+            Assert.Contains("is not available", string.Join(Environment.NewLine, failed.Errors));
             var methods = File.ReadAllLines(log);
             Assert.Contains("tools/list", methods);
             Assert.DoesNotContain("tools/call", methods);
-
-            var ran = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "tally", "Main", """{ "day": "2026-10-20" }""");
-            Assert.False(ran.Success);
-            Assert.Contains("payments.list_failed", string.Join(Environment.NewLine, ran.Errors));
-            Assert.Contains("is not available", string.Join(Environment.NewLine, ran.Errors));
-            Assert.Equal(0, ran.CapabilityCalls);
         }
         finally
         {
             Environment.SetEnvironmentVariable("INTENT_MCP_OMIT", null);
             Environment.SetEnvironmentVariable("INTENT_MCP_LOG", null);
+            Writ.Runtime.Machine.ResetMcpSessions();
             Directory.Delete(temp, true);
             if (File.Exists(log))
             {
@@ -476,9 +449,9 @@ public class McpTests
         Assert.Equal("rest", Assert.Single(result.Capabilities).Transport);
         Assert.Contains("tools/list", server.Methods);
         Assert.DoesNotContain("tools/call", server.Methods);
-        Assert.Contains("-Transport 'rest'", result.GeneratedPowerShell);
+        Assert.Contains("\"rest\"", result.GeneratedCSharp);
 
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "echo", "Ping", "{}");
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "Ping", "{}");
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors) + pwsh.Output);
         Assert.Equal("hi", pwsh.Value);
         Assert.Contains("tools/call", server.Methods);

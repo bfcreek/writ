@@ -6,5 +6,5 @@
   "cmdletCatalogHash": "sha256:fc3c09d06eee5527474f1d4b3d6c08d2faa903593f25d984e830839ea93c0657",
   "capabilities": {},
   "readings": [],
-  "emission": "powershell-script"
+  "emission": "csharp-library"
 }

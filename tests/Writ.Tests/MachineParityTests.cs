@@ -3,7 +3,7 @@ using Writ.Compiler.Execution;
 
 namespace Writ.Tests;
 
-public class PowerShellParityTests
+public class MachineParityTests
 {
     [Theory]
     [InlineData("basics/calculate-total.writ", "CalculateTotal", "basics/input-calculate-total.json")]
@@ -13,29 +13,28 @@ public class PowerShellParityTests
     [InlineData("basics/fizzbuzz-loop.writ", "ClassifyAll", "basics/input-fizzbuzz.json")]
     [InlineData("payments/recover-failures.writ", "RecoverFailures", "payments/input-recover.json")]
     [InlineData("payments/but-first.writ", "Recover", "payments/input-but-first.json")]
-    public void PowerShell_runs_the_sample(string sample, string entry, string inputFile)
+    public void Machine_runs_the_sample(string sample, string entry, string inputFile)
     {
         var path = TestPaths.Sample(sample);
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var input = File.ReadAllText(TestPaths.Sample(inputFile));
-        var module = Path.GetFileNameWithoutExtension(sample);
 
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, module, entry, input);
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, entry, input);
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.NotNull(pwsh.Value);
     }
 
     [Fact]
-    public void PowerShell_capability_calls_happen_only_at_run_and_in_order()
+    public void Machine_capability_calls_happen_only_at_run_and_in_order()
     {
         var path = TestPaths.Sample(Path.Combine("payments", "but-first.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        var script = result.GeneratedPowerShell!;
-        Assert.True(script.IndexOf("'list_failed'", StringComparison.Ordinal) < script.IndexOf("'retry'", StringComparison.Ordinal));
+        var script = result.GeneratedCSharp!;
+        Assert.True(script.IndexOf("\"list_failed\"", StringComparison.Ordinal) < script.IndexOf("\"retry\"", StringComparison.Ordinal));
 
-        var exec = new PowerShellExecutor().Execute(script, "but-first", "Recover", File.ReadAllText(TestPaths.Sample(Path.Combine("payments", "input-but-first.json"))));
+        var exec = new MachineExecutor().Execute(script, "Recover", File.ReadAllText(TestPaths.Sample(Path.Combine("payments", "input-but-first.json"))));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(2, exec.CapabilityCalls);
         Assert.True(Assert.IsType<bool>(exec.Value));

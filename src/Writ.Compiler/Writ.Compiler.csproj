@@ -1,8 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <EmbeddedResource Include="..\Writ.Runtime.PowerShell\Writ.psm1" LogicalName="Writ.psm1" />
     <EmbeddedResource Include="..\..\tools\powershell.catalog.json" LogicalName="powershell.catalog.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -18,9 +18,8 @@ public class CapabilityTests
         Assert.True(loader.Discoveries > 0);
         Assert.Contains(result.Ir!.Functions[0].Body, n => n is IrAssign { Value: IrCapabilityCall });
 
-        var exec = new PowerShellExecutor().Execute(
-            result.GeneratedPowerShell!,
-            "recover-failures",
+        var exec = new MachineExecutor().Execute(
+            result.GeneratedCSharp!,
             "RecoverFailures",
             File.ReadAllText(SamplePath(Path.Combine("payments", "input-recover.json"))));
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));

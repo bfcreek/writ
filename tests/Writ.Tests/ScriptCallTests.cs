@@ -12,13 +12,13 @@ public class ScriptCallTests
         var path = TestPaths.Sample(Path.Combine("scripts", "call-both.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains("Invoke-WritScript", result.GeneratedPowerShell);
+        Assert.Contains("InvokeScript", result.GeneratedCSharp);
         var calls = Walk(result.Ir!.Functions.SelectMany(f => f.Body)).OfType<IrScriptCall>().ToList();
         Assert.Contains(calls, c => c.Kind == "writ");
         Assert.Contains(calls, c => c.Kind == "powershell");
 
         var input = File.ReadAllText(TestPaths.Sample(Path.Combine("scripts", "input.json")));
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "call-both", "Main", input);
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, "Main", input);
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Equal("Hello, Ada (42)", pwsh.Value);
     }
@@ -51,7 +51,7 @@ public class ScriptCallTests
             Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
             Assert.False(File.Exists(marker));
 
-            var ran = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "call", "Main", "{}");
+            var ran = new MachineExecutor().Execute(result.GeneratedCSharp!, "Main", "{}");
             Assert.True(ran.Success, string.Join(Environment.NewLine, ran.Errors));
             Assert.Equal("Hello, Ada", ran.Value);
             Assert.True(File.Exists(marker));

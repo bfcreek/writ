@@ -1,13 +1,13 @@
-# Writ — Supported Subset (PowerShell target, P0–P6)
+# Writ — Supported Subset (C# Machine target, P0–P6)
 
-Research prototype. Source text reads as constrained English. The compiler translates those sentences into typed declarations and operations, then writes a runnable PowerShell 7 script. It does not treat a file as a free-form prompt.
+Research prototype. Source text reads as constrained English. The compiler translates those sentences into typed declarations and operations, then writes C# that runs on the in-process Machine runtime. It does not treat a file as a free-form prompt.
 
 ## Commands
 
 ```text
 writ check <file.writ> [--frozen]
-writ compile <file.writ> [--out dir] [--target auto|powershell] [--frozen]
-writ run <file.writ> --entry Name [--input args.json] [--target auto|powershell] [--dry-run]
+writ compile <file.writ> [--out dir] [--target auto|csharp] [--frozen]
+writ run <file.writ> --entry Name [--input args.json] [--target auto|csharp] [--dry-run]
 writ lock <file.writ>
 writ tools list <file.writ>
 writ tools inspect <file.writ> <alias.operation | pwsh.Cmdlet-Name>
@@ -15,7 +15,7 @@ writ explain <file.writ>
 writ diff <file.writ>
 ```
 
-`writ` here means `dotnet run --project src/Writ.Cli --`. With `--target auto` (the default), compilation accepts the PowerShell script when the constraint files allow it. `powershell` forces that script. `compile` writes `<name>.ps1`, `<name>.ir.json`, and `<name>.writ.lock.json`, and installs the shared runtime module at `~/.writ/modules/Writ/Writ.psm1`.
+`writ` here means `dotnet run --project src/Writ.Cli --`. With `--target auto` (the default), compilation selects the C# Machine target. `csharp` is the only explicit target. `compile` writes `<name>.cs`, `<name>.ir.json`, and `<name>.writ.lock.json`.
 
 ## How a program reads
 
@@ -36,7 +36,7 @@ When run, given a folder which is a string, returning a list of string
     return the lines
 ```
 
-The compiled script has comment-based help from the leading comments, a `param([string]$folder)` block, and runs as `pwsh ./largest-files.ps1 -folder C:\x`. Multi-word names become camelCase in the typed program and in JSON input (`a tax rate` is `taxRate`). A keyword is special in the sentence position that uses it, and a name wherever a name is read: `To Count`, `the length is 3`, `given a which which is an integer`. `is`, `are`, and `be` stay the copula. `the count of`, `the length of`, `the sum of`, and `the first 3 of` stay operations.
+The compiled C# has a `MachineEntry` method for `When run` and executes in process through `writ run`. Multi-word names become camelCase in the typed program and in JSON input (`a tax rate` is `taxRate`). A keyword is special in the sentence position that uses it, and a name wherever a name is read: `To Count`, `the length is 3`, `given a which which is an integer`. `is`, `are`, and `be` stay the copula. `the count of`, `the length of`, `the sum of`, and `the first 3 of` stay operations.
 
 ## What the compiler accepts
 
@@ -107,11 +107,11 @@ The compiled script has comment-based help from the leading comments, a `param([
 
 `an integer`, `a decimal`, `a string`, `a boolean`, `a list of T`, names introduced with `An ... has`, and *untyped data* (what a command, a JSON parse, or a bare MCP tool returns). Untyped data converts to primitives at run time and must be checked with `as a <Type>` before it is used as a record (`E2014` hints at this).
 
-## Commands (PowerShell cmdlets)
+## Commands (catalog-backed operations)
 
 `tools/powershell.catalog.json` is a pinned catalog of cmdlets with English phrases, parameters, and effects: `Get-ChildItem`, `Get-Item`, `Get-Content`, `Set-Content`, `Add-Content`, `New-Item`, `New-TemporaryFile`, `Copy-Item`, `Move-Item`, `Rename-Item`, `Remove-Item`, `Test-Path`, `Join-Path`, `Split-Path`, `Resolve-Path`, `Set-Location`, `Get-FileHash`, `Select-String`, `Measure-Object`, `Compare-Object`, `Compress-Archive`, `Expand-Archive`, `Get-PSDrive`, `Get-Process`, `Stop-Process`, `Wait-Process`, `Start-Process`, `Invoke-Item`, `Get-Command`, `Get-Service`, `Start-Service`, `Stop-Service`, `Restart-Service`, `Stop-Computer`, `Restart-Computer`, `Get-Date`, `Get-TimeZone`, `Get-Uptime`, `Get-Random`, `New-Guid`, `Invoke-RestMethod`, `Invoke-WebRequest`, `Test-Connection`, `Import-Csv`, `Export-Csv`, `ConvertTo-Json`, `Get-Clipboard`, `Set-Clipboard`, `Clear-Host`, `Start-Sleep`, `Read-Host`. A sentence like `the items in the folder, files only` is matched against that catalog and becomes `Get-ChildItem -Path $folder -File`. When several phrases match, the most specific one wins. The cmdlet's effect must be granted with `Allow …` (`E4003`). Commands with write effects receive `-WhatIf` under `--dry-run`. `writ tools list <file>` counts the catalog and `writ tools inspect <file> pwsh.<Name>` prints one cmdlet's phrases, parameters, and aliases.
 
-The sentence table's console, file, path, process, and service rows are recognized directly, including the verb and noun variants written there. A looser sentence that does not fit one of those shapes is still read from the catalog. A program that uses one of the direct sentences compiles to PowerShell.
+The sentence table's console, file, path, process, and service rows are recognized directly, including the verb and noun variants written there. A looser sentence that does not fit one of those shapes is still read from the catalog. At run time these commands are handled by the C# Machine runtime.
 
 A catalog parameter is filled from the sentence. A name the sentence uses wins over one that is merely in scope: first a name that matches the parameter or one of its aliases (`the file` for `-Path`), then quoted text, then any other name the sentence mentions, in the order it is said (`unzip the archive into the unpacked` fills `-DestinationPath` with `unpacked`). Only when the sentence names nothing for a parameter does an in-scope name that matches an alias stand in (`list the files` with a `folder` defined). Words that belong to the phrase or to a switch (`files only`) are not names. A sentence of the shape `the X of the Y` where `Y` is text, a number, or a list, and `X` is not one of its fields, is read from the catalog too: `the hash of the file`, `the word count of the text`.
 
@@ -171,7 +171,7 @@ An explicit type or definition is a specific rule and is not read again. Every a
 
 ## Capabilities and MCP
 
-A manifest declares types, operations, allowed operations, granted effects, and a `provider`: `mock` (results under `mock`), or `mcp` with a `command` (stdio) or `baseUrl` (HTTP). Checking a program that needs an MCP server starts it, sends `initialize` and `tools/list`, confirms every declared operation exists, and stops. The compile-time client has no `tools/call`; invocation lives only in the PowerShell runtime (`Writ.psm1`).
+A manifest declares types, operations, allowed operations, granted effects, and a `provider`: `mock` (results under `mock`), or `mcp` with a `command` (stdio) or `baseUrl` (HTTP). Checking a program that needs an MCP server starts it, sends `initialize` and `tools/list`, confirms every declared operation exists, and stops. The compile-time client has no `tools/call`; invocation lives only in the Machine runtime.
 
 `Use payments from mcp "…"` skips the manifest: tools become operations, input schemas become arguments, results are untyped data, read-only tools need `Allow network access`, and the rest need `Allow changing external systems`. The quoted text is a command line, or an `http://` or `https://` URL. `tools/mcp-test-server.ps1` is the in-repo server used by tests; it logs every JSON-RPC method so tests can prove `check` never calls a tool.
 
@@ -192,46 +192,46 @@ Every generated script accepts `-ListTools`. It prints each MCP tool the script 
 
 Starting the script checks that list against the tools each server offers. It sends `tools/list` once per server and stops before the program runs if a required tool is missing. The same check runs when `writ run` starts an entry, and when a called Writ script starts. `-ListTools` does not perform it.
 
-Capability failures are structured: PowerShell throws `WritCapabilityException` with `Alias`, `Operation`, and `Provider`; the executor reports `payments.retry (mock): …`.
+Capability failures are structured: the Machine throws `WritCapabilityException` with `Alias`, `Operation`, and `Provider`; the executor reports `payments.retry (mock): …`.
 
 ## Scripts
 
 `run "path"` calls another script. The path is relative to the file that contains the sentence. Paths are `.writ` or `.ps1`.
 
-A Writ script is compiled while checking, which reads its `When run` parameters and result type and never runs it. The caller must grant every permission that script grants. At run time the compiled script is started with pwsh and its result comes back. A script that calls itself, directly or through another script, is `E4012`. A Writ script with no `When run` block is `E4011`.
+A Writ script is compiled while checking, which reads its `When run` parameters and result type and never runs it. The caller must grant every permission that script grants. At run time the nested program is compiled to C# and invoked in process. A script that calls itself, directly or through another script, is `E4012`. A Writ script with no `When run` block is `E4011`.
 
-A PowerShell script is not executed while checking. The compiler reads the top-level `param()` block and, when present, the `.OUTPUTS` section of the comment-based help. Without `.OUTPUTS` the result is untyped data. Because the body is invisible, running it needs `Allow running scripts` (`E4003`). A missing file, or a file that is neither `.writ` nor `.ps1`, is `E4010`.
+A foreign PowerShell script is not executed while checking. The compiler reads the top-level `param()` block and, when present, the `.OUTPUTS` section of the comment-based help. Without `.OUTPUTS` the result is untyped data. Because the body is invisible, running it needs `Allow running scripts` (`E4003`) and starts `pwsh` only for that file. A missing file, or a file that is neither `.writ` nor `.ps1`, is `E4010`.
 
 `Also use` copies helpers into this program. `run` starts the other script and uses what it returns.
 
 ## Emission
 
-Programs emit one PowerShell script:
+Programs emit one C# library:
 
 | Id | Language | Approach | Architecture | Offers |
 |----|----------|----------|--------------|--------|
-| `powershell-script` | PowerShell | script | its own process | `dry-run`, `cmdlets` |
+| `csharp-library` | C# | library | in-process | `dry-run`, `cmdlets`, `csharp`, `library`, `in-process` |
 
-`--target auto` accepts that script when the constraints allow it. `--target powershell` forces it and skips scoring. A constraint the script cannot meet, such as `forbid: ["external-process"]`, is `E5001`.
+`--target auto` (the default) and `--target csharp` both select that library. `--target powershell` is an error. A constraint the library cannot meet, such as `forbid: ["in-process"]`, is `E5001`.
 
 Constraints live in JSON. The project file is `writ.constraints.json`, next to the source or in a parent folder (the nearest file wins, same walk as `writ.mcp.json`). The user file is `~/.writ/constraints.json`. The command line reads both. A library call reads the project file only, unless it asks for the user file.
 
 ```json
 {
   "require": ["dry-run"],
-  "prefer": ["script"],
+  "prefer": ["csharp", "in-process"],
   "avoid": ["cmdlets"],
-  "language": "powershell",
-  "approach": "script",
-  "architecture": "external-process"
+  "language": "csharp",
+  "approach": "library",
+  "architecture": "in-process"
 }
 ```
 
 `require` and `forbid` from both files apply. A trait that is required and forbidden is `E5002`, as is an unknown trait or a key the file does not define. When both files set `language`, `approach`, or `architecture`, the project file wins. Preferences are scored: each project `prefer` or `avoid` counts 2, each user one counts 1.
 
-`writ explain` prints the choice. The lockfile records the emission id. `--frozen` fails when that id changes (`E4009`). A lock written before emissions were recorded still matches. A lock that recorded `csharp-library` does not.
+`writ explain` prints the choice. The lockfile records the emission id. `--frozen` fails when that id changes (`E4009`). A lock written before emissions were recorded still matches.
 
-`samples/emission` prefers a script that can dry-run.
+`samples/emission` prefers the in-process C# target.
 
 ## Lockfile
 
@@ -239,9 +239,9 @@ Constraints live in JSON. The project file is `writ.constraints.json`, next to t
 
 ## Pipeline
 
-English source → sentences → structural AST → includes merged → typed IR (schema 0.7.0) → checks → emission chosen from constraints → PowerShell script → run.
+English source → sentences → structural AST → includes merged → typed IR (schema 0.7.0) → checks → C# library → Machine run.
 
-The PowerShell language forms Writ accepts, and the ones it leaves out, are listed in [constructs.md](constructs.md).
+Language forms Writ accepts, and the ones it leaves out, are listed in [constructs.md](constructs.md).
 
 ## Fail-closed behavior
 
@@ -249,4 +249,4 @@ Unknown names, unknown types, wrong arguments, non-boolean conditions, missing r
 
 ## Not yet
 
-`powershell-module` and `http` providers (declared but not routed), splitting helpers into their own `.psm1`, `ensure`, and runtime `infer`.
+`powershell-module` and `http` providers (declared but not routed), `ensure`, and runtime `infer`.

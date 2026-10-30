@@ -12,8 +12,8 @@
     <OutputPath>$(MSBuildThisFileDirectory)bin\$(Platform)\</OutputPath>
     <IntermediateOutputPath>$(MSBuildThisFileDirectory)obj\$(Platform)\</IntermediateOutputPath>
     <DefineConstants>MsiVersion=$(MsiVersion);PackageVersion=$(PackageVersion)</DefineConstants>
-    <!-- ICE61: same-version upgrades so a prerelease and the release that share major.minor.patch replace each other. ICE91: the package is per-user only, so the executable is not meant to follow ALLUSERS. ICE57: the runtime module is under %USERPROFILE%, which SetDirectory assigns; ICE still treats that directory as per-machine. -->
-    <SuppressIces>ICE57;ICE61;ICE91</SuppressIces>
+    <!-- ICE61: same-version upgrades so a prerelease and the release that share major.minor.patch replace each other. ICE91: the package is per-user only, so the executable is not meant to follow ALLUSERS. -->
+    <SuppressIces>ICE61;ICE91</SuppressIces>
   </PropertyGroup>
 
 </Project>

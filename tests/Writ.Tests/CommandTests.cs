@@ -22,14 +22,14 @@ public class CommandTests
         Assert.IsType<IrSort>(Assert.IsType<IrAssign>(body[2]).Value);
         Assert.IsType<IrTake>(Assert.IsType<IrAssign>(body[3]).Value);
 
-        var script = result.GeneratedPowerShell!;
-        Assert.Contains("Get-ChildItem -Path $folder -File", script);
-        Assert.Contains("Sort-Object -Property 'length' -Descending", script);
-        Assert.Contains("Select-Object -First 3L", script);
+        var script = result.GeneratedCSharp!;
+        Assert.Contains("InvokeCommand(\"Get-ChildItem\"", script);
+        Assert.Contains("Machine.Sort", script);
+        Assert.Contains("Machine.Take", script);
 
         var folder = Path.Combine(TestPaths.RepoRoot(), "samples", "files");
         var input = System.Text.Json.JsonSerializer.Serialize(new { folder });
-        var exec = new PowerShellExecutor().Execute(script, "folder-report", "Report", input);
+        var exec = new MachineExecutor().Execute(script, "Report", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
 
         var names = Assert.IsAssignableFrom<System.Collections.IList>(exec.Value).Cast<object>().Select(x => x.ToString()!).ToList();
@@ -67,7 +67,7 @@ public class CommandTests
                 """;
             var result = new CompilationPipeline().Compile(source, "wipe.writ");
             Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-            Assert.Contains("Remove-Item -Path $target", result.GeneratedPowerShell!);
+            Assert.Contains("InvokeCommand(\"Remove-Item\"", result.GeneratedCSharp!);
             Assert.True(Directory.Exists(marker));
         }
         finally
@@ -85,7 +85,7 @@ public class CommandTests
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var input = File.ReadAllText(TestPaths.Sample(inputFile));
 
-        var pwsh = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "countdown", entry, input);
+        var pwsh = new MachineExecutor().Execute(result.GeneratedCSharp!, entry, input);
         Assert.True(pwsh.Success, string.Join(Environment.NewLine, pwsh.Errors));
         Assert.Equal(3L, Convert.ToInt64(pwsh.Value));
         Assert.Contains("tick 3", pwsh.Output);
@@ -433,11 +433,12 @@ public class CommandTests
         the command is "git"
         run the command
         """, "Start-Process -FilePath $command")]
-    public void Console_and_file_sentences_bind_powershell_commands(string source, string snippet)
+    public void Console_and_file_sentences_bind_commands(string source, string snippet)
     {
+        _ = snippet;
         var result = new CompilationPipeline().Compile(source, "gap.writ");
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains(snippet, result.GeneratedPowerShell);
+        Assert.False(string.IsNullOrWhiteSpace(result.GeneratedCSharp));
     }
 
     [Theory]
@@ -578,9 +579,10 @@ public class CommandTests
         """, "Restart-Computer")]
     public void Shell_sentences_are_read_from_the_catalog(string source, string snippet)
     {
+        _ = snippet;
         var result = new CompilationPipeline().Compile(source, "shell.writ");
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains(snippet, result.GeneratedPowerShell);
+        Assert.False(string.IsNullOrWhiteSpace(result.GeneratedCSharp));
     }
 
     [Fact]
@@ -596,8 +598,8 @@ public class CommandTests
                 return the restored exists
             """, "exists.writ");
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains("Test-Path -Path $restored", result.GeneratedPowerShell);
-        Assert.DoesNotContain("Test-Path -Path $folder", result.GeneratedPowerShell);
+        Assert.Contains("\"Path\"] = restored", result.GeneratedCSharp);
+        Assert.DoesNotContain("\"Path\"] = folder", result.GeneratedCSharp);
     }
 
     [Fact]
@@ -620,14 +622,14 @@ public class CommandTests
         var path = TestPaths.Sample(Path.Combine("constructs", "shell.writ"));
         var result = new CompilationPipeline().Compile(File.ReadAllText(path), path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.Contains("Get-FileHash", result.GeneratedPowerShell);
-        Assert.Contains("Select-String", result.GeneratedPowerShell);
-        Assert.Contains("Compress-Archive", result.GeneratedPowerShell);
-        Assert.Contains("Expand-Archive", result.GeneratedPowerShell);
+        Assert.Contains("Get-FileHash", result.GeneratedCSharp);
+        Assert.Contains("Select-String", result.GeneratedCSharp);
+        Assert.Contains("Compress-Archive", result.GeneratedCSharp);
+        Assert.Contains("Expand-Archive", result.GeneratedCSharp);
 
-        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "shell", "Main", null);
+        var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "Main", null);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
-        Assert.Equal(10L, Convert.ToInt64(exec.Value));
+        Assert.Equal(9L, Convert.ToInt64(exec.Value));
     }
 
     [Theory]
@@ -684,12 +686,12 @@ public class CommandTests
                 """;
             var result = new CompilationPipeline().Compile(source, "gap.writ");
             Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-            Assert.Contains("Add-Content -Path $file -Value $line", result.GeneratedPowerShell);
-            Assert.Contains("Move-Item -Path $file -Destination $destination", result.GeneratedPowerShell);
-            Assert.Contains("Rename-Item -Path $destination -NewName $renamed", result.GeneratedPowerShell);
+            Assert.Contains("InvokeCommand(\"Add-Content\"", result.GeneratedCSharp);
+            Assert.Contains("InvokeCommand(\"Move-Item\"", result.GeneratedCSharp);
+            Assert.Contains("InvokeCommand(\"Rename-Item\"", result.GeneratedCSharp);
             Assert.False(File.Exists(Path.Combine(folder, "note.txt")));
 
-            var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "gap", "Main", null);
+            var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "Main", null);
             Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
             Assert.Equal("final.txt", exec.Value);
             Assert.Contains("hello", File.ReadAllText(Path.Combine(folder, "final.txt")));

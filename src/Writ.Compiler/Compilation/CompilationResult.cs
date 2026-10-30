@@ -10,11 +10,8 @@ public sealed record CompilationResult(
     IReadOnlyList<Diagnostic> Diagnostics,
     ProgramAst? Ast,
     IrModule? Ir,
-    string? GeneratedPowerShell)
+    string? GeneratedCSharp)
 {
-    /// <summary>C# source when the chosen emission is <c>csharp-library</c>.</summary>
-    public string? GeneratedCSharp { get; init; }
-
     /// <summary>Capabilities discovered while binding (manifests and MCP servers), in declaration order.</summary>
     public IReadOnlyList<LoadedCapability> Capabilities { get; init; } = [];
 

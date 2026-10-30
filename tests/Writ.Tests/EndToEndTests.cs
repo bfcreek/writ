@@ -15,11 +15,11 @@ public class EndToEndTests
         var result = pipeline.Compile(source, path);
 
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
-        Assert.False(string.IsNullOrWhiteSpace(result.GeneratedPowerShell));
-        Assert.Contains("CalculateTotal", result.GeneratedPowerShell!);
+        Assert.False(string.IsNullOrWhiteSpace(result.GeneratedCSharp));
+        Assert.Contains("CalculateTotal", result.GeneratedCSharp!);
 
         var input = File.ReadAllText(SamplePath(Path.Combine("basics", "input-calculate-total.json")));
-        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "calculate-total", "CalculateTotal", input);
+        var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "CalculateTotal", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
         Assert.Equal(27.54m, Assert.IsType<decimal>(exec.Value));
     }
@@ -33,7 +33,7 @@ public class EndToEndTests
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
         var input = File.ReadAllText(SamplePath(Path.Combine("basics", "input-fizzbuzz.json")));
-        var exec = new PowerShellExecutor().Execute(result.GeneratedPowerShell!, "fizzbuzz-loop", "ClassifyAll", input);
+        var exec = new MachineExecutor().Execute(result.GeneratedCSharp!, "ClassifyAll", input);
         Assert.True(exec.Success, string.Join(Environment.NewLine, exec.Errors));
 
         var list = Assert.IsAssignableFrom<System.Collections.IList>(exec.Value);
@@ -62,10 +62,10 @@ public class EndToEndTests
         var result = new CompilationPipeline().Compile(source, path);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
-        var script = result.GeneratedPowerShell!;
-        Assert.Contains("function FizzBuzz {", script);
-        Assert.Contains("param([long]$n)", script);
-        Assert.Contains("'FizzBuzz'", script);
+        var script = result.GeneratedCSharp!;
+        Assert.Contains("static string FizzBuzz", script);
+        Assert.Contains("long n", script);
+        Assert.Contains("\"FizzBuzz\"", script);
     }
 
     private static string SamplePath(string relative) =>
