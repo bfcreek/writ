@@ -1,0 +1,6 @@
+﻿# Native stdlib and ensure.
+When run, returning a string
+    the slug is the slug of "Hello World"
+    the upper is the uppercase text of "hi"
+    ensure the slug is equal to "hello-world"
+    return the upper

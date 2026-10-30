@@ -1,0 +1,4 @@
+﻿Allow reading files
+When run, given a folder which is a string, returning a string
+    the up is the uptime
+    return the up as a string

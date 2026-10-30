@@ -253,22 +253,17 @@ public static partial class Machine
         Ambient.Value?.CallLog.Add($"{alias}.{operation}");
         try
         {
-            if (provider == "mcp")
+            return provider switch
             {
-                return InvokeMcpCapability(alias, operation, arguments, endpoint ?? "", transport, workingDirectory);
-            }
-
-            if (provider != "mock")
-            {
-                throw new NotSupportedException($"Provider '{provider}' for '{alias}' is not supported yet.");
-            }
-
-            if (!TryMockResult(manifestPath, operation, out var result))
-            {
-                throw new InvalidOperationException($"No mock result is declared for {alias}.{operation}.");
-            }
-
-            return result;
+                "mcp" => InvokeMcpCapability(alias, operation, arguments, endpoint ?? "", transport, workingDirectory),
+                "http" => InvokeHttpCapability(operation, arguments, endpoint ?? "", workingDirectory),
+                "sqlite" => InvokeSqliteCapability(operation, arguments, endpoint ?? "", workingDirectory, writes),
+                "powershell-module" => InvokePowerShellModuleCapability(operation, arguments, endpoint ?? ""),
+                "mock" => TryMockResult(manifestPath, operation, out var result)
+                    ? result
+                    : throw new InvalidOperationException($"No mock result is declared for {alias}.{operation}."),
+                _ => throw new NotSupportedException($"Provider '{provider}' for '{alias}' is not supported yet.")
+            };
         }
         catch (Exception ex) when (ex is not WritCapabilityException)
         {

@@ -50,9 +50,13 @@ The compiled C# has a `MachineEntry` method for `When run` and executes in proce
 | `Also use "helpers.writ"` | Another file's types, functions, tools, and grants join this program |
 | `run "greet.ps1" with name set to "Ada"` | Call a PowerShell script. Its `param()` block and `.OUTPUTS` are the contract. Needs `Allow running scripts` |
 | `run "double.writ" with the value` | Call another Writ script's `When run` block. Checked, not run, until this program runs |
-| `Allow reading files, writing files, network access, changing processes` | Effect grants for commands and bare MCP tools |
-| `Use payments from "payments.capability.json"` | Bind a capability manifest (mock or MCP-backed) |
+| `Allow reading files, writing files, network access, changing processes, running scripts, reading secrets, asking a model` | Effect grants for commands, native tools, and bare MCP tools |
+| `ensure <condition>` | Halt with `MachineHaltException` when the condition is false |
+| `infer "prompt"` / `infer <expression>` | Runtime model call (`ai.infer`); needs `Allow asking a model`; result is untyped data |
+| `Use payments from "payments.capability.json"` | Bind a capability manifest (mock, MCP, http, sqlite, or powershell-module) |
 | `Use payments from mcp "pwsh -File server.ps1"` | Bind an MCP server directly; its tool list is the manifest |
+| `Use db from sqlite "data.db"` | Bind a SQLite database; tables become typed operations |
+| `Use api from http "openapi.json"` | Bind an OpenAPI document; get/post/put/delete become operations |
 | `the name is <value>` | Assignment |
 | `if <condition>` / `otherwise` / `otherwise if` / `otherwise when` | Branch |
 | `for each name in <collection>` | Loop. The same loop can be one sentence: `for each number from 1 to 3, add it to the total`. `it` is the current item; after the sentence it is the earlier value again. `them` is the list |
@@ -171,7 +175,9 @@ An explicit type or definition is a specific rule and is not read again. Every a
 
 ## Capabilities and MCP
 
-A manifest declares types, operations, allowed operations, granted effects, and a `provider`: `mock` (results under `mock`), or `mcp` with a `command` (stdio) or `baseUrl` (HTTP). Checking a program that needs an MCP server starts it, sends `initialize` and `tools/list`, confirms every declared operation exists, and stops. The compile-time client has no `tools/call`; invocation lives only in the Machine runtime.
+A manifest declares types, operations, allowed operations, granted effects, and a `provider`: `mock` (results under `mock`), `mcp` with a `command` (stdio) or `baseUrl` (HTTP), `http` (OpenAPI document or base URL), `sqlite` (database path), or `powershell-module` (module name). Checking a program that needs an MCP server starts it, sends `initialize` and `tools/list`, confirms every declared operation exists, and stops. An `http` provider with a local OpenAPI file discovers get/post/put/delete operations; a `sqlite` provider reads `PRAGMA table_info` and pins a schema hash. The compile-time client has no effectful calls; invocation lives only in the Machine runtime.
+
+Native tools live in `tools/writ.catalog.json` (merged with the PowerShell catalog). Dotted ids such as `text.trim`, `json.path`, `secret.get`, `http.post`, `store.remember`, `notify.webhook`, `compiler.check`, and `ai.infer` are ordinary catalog sentences. `writ.mocks.json` in the program folder or `~/.writ` can supply `{ "Get-Uptime": { "result": … } }` for any catalog tool.
 
 `Use payments from mcp "…"` skips the manifest: tools become operations, input schemas become arguments, results are untyped data, read-only tools need `Allow network access`, and the rest need `Allow changing external systems`. The quoted text is a command line, or an `http://` or `https://` URL. `tools/mcp-test-server.ps1` is the in-repo server used by tests; it logs every JSON-RPC method so tests can prove `check` never calls a tool.
 
@@ -247,6 +253,23 @@ Language forms Writ accepts, and the ones it leaves out, are listed in [construc
 
 Unknown names, unknown types, wrong arguments, non-boolean conditions, missing returns, unresolved phrases, ambiguous phrases, unknown operations, invalid manifests, missing effect grants, retried writes, missing MCP tools, drifted tools, and helper files with their own entry are errors that point at the English source.
 
-## Not yet
+## Native tools (writ.catalog.json)
 
-`powershell-module` and `http` providers (declared but not routed), `ensure`, and runtime `infer`.
+Phrase-matched like cmdlets. Pure tools need no `Allow`. Others need the effect in the catalog row.
+
+| Area | Examples |
+|------|----------|
+| Text | trim, upper/lower, slug, base64, URL encode/decode |
+| Dates | add days/hours, days between, UTC now |
+| Collections | distinct, reverse, flatten, skip, min/max/average |
+| Data | `json.path`, `as YAML`, `as XML` (with `as JSON` / `as CSV`) |
+| Secrets | `the secret NAME` (`Allow reading secrets`) |
+| HTTP | `http.post` / `http.put`; also `Invoke-RestMethod` / `Invoke-WebRequest` |
+| Store | `store.remember` / `store.recall` (`~/.writ/state.db`) |
+| Observability | `log`, `the calls so far`, `the elapsed milliseconds` |
+| Notify | webhook, email (`WRIT_SMTP_*`), Windows toast |
+| Compiler | `compiler.check` / `explain` / `lock-info` |
+| AI | `infer …` (`Allow asking a model`, `WRIT_AI_*`) |
+| Process | `the output of running …` (stdout capture) |
+
+Every catalog entry has an in-process Machine handler; `CatalogCoverageTests` fails if that drifts.

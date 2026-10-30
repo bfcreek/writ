@@ -73,6 +73,8 @@ public enum TokenKind
     Smallest,
     When,
     Allow,
+    Ensure,
+    Infer,
     Try,
     Finally,
 

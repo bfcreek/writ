@@ -23,6 +23,8 @@ public enum EffectKind
     NetworkWrite,
     ExternalState,
     RuntimeAi,
+    /// <summary>Reading a secret from the environment, secrets file, or OS vault.</summary>
+    SecretRead,
     /// <summary>Running a PowerShell script whose body the compiler cannot see.</summary>
     Script
 }
@@ -50,6 +52,7 @@ public enum EffectKind
 [JsonDerivedType(typeof(IrTake), "take")]
 [JsonDerivedType(typeof(IrSelectField), "selectField")]
 [JsonDerivedType(typeof(IrSay), "say")]
+[JsonDerivedType(typeof(IrEnsure), "ensure")]
 [JsonDerivedType(typeof(IrWhile), "while")]
 [JsonDerivedType(typeof(IrCommand), "command")]
 [JsonDerivedType(typeof(IrValidate), "validate")]
@@ -312,6 +315,14 @@ public sealed record IrSelectField(
 
 public sealed record IrSay(
     IReadOnlyList<IrNode> Parts,
+    SourceSpan Span,
+    IrType Type,
+    Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);
+
+/// <summary>Halt when <see cref="Condition"/> is false.</summary>
+public sealed record IrEnsure(
+    IrNode Condition,
+    string Message,
     SourceSpan Span,
     IrType Type,
     Provenance Provenance = Provenance.Deterministic) : IrNode(Span, Type, Provenance);

@@ -27,7 +27,7 @@ public sealed class CSharpGenerator
     private static readonly HashSet<string> Builtins = new(StringComparer.Ordinal)
     {
         "len", "round", "sum", "append", "str", "int", "decimal", "bool",
-        "json", "csv", "env", "homeFolder", "currentFolder", "tempFolder", "scriptFolder", "machineName", "userName"
+        "json", "csv", "yaml", "xml", "env", "homeFolder", "currentFolder", "tempFolder", "scriptFolder", "machineName", "userName"
     };
 
     /// <summary>
@@ -441,6 +441,12 @@ public sealed class CSharpGenerator
             case IrSay say:
                 sb.AppendLine($"{pad}global::Writ.Runtime.Machine.Say(string.Join(\" \", new string[] {{ {string.Join(", ", say.Parts.Select(part => $"global::Writ.Runtime.Machine.Text({Expr(part)})"))} }}));");
                 break;
+            case IrEnsure ensure:
+                sb.AppendLine($"{pad}if (!global::Writ.Runtime.Machine.ToBoolean({Expr(ensure.Condition)}))");
+                sb.AppendLine($"{pad}{{");
+                sb.AppendLine($"{pad}    throw new global::Writ.Runtime.MachineHaltException({Quote(ensure.Message)});");
+                sb.AppendLine($"{pad}}}");
+                break;
             case IrCommand command:
                 sb.AppendLine($"{pad}{Command(command)};");
                 break;
@@ -583,6 +589,8 @@ public sealed class CSharpGenerator
                 "bool" => $"global::Writ.Runtime.Machine.ToBoolean({args[0]})",
                 "json" => $"global::Writ.Runtime.Machine.ParseJson({args[0]})",
                 "csv" => $"global::Writ.Runtime.Machine.ParseCsv({args[0]})",
+                "yaml" => $"global::Writ.Runtime.Machine.ParseYaml({args[0]})",
+                "xml" => $"global::Writ.Runtime.Machine.ParseXml({args[0]})",
                 "env" => $"global::Writ.Runtime.Machine.Env({args[0]})",
                 "homeFolder" => "global::Writ.Runtime.Machine.HomeFolder()",
                 "currentFolder" => "global::Writ.Runtime.Machine.CurrentFolder()",

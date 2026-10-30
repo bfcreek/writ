@@ -2,10 +2,15 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\tools\powershell.catalog.json" LogicalName="powershell.catalog.json" />
+    <EmbeddedResource Include="..\..\tools\writ.catalog.json" LogicalName="writ.catalog.json" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 
   <PropertyGroup>

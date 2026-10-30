@@ -295,15 +295,16 @@ static int RunToolsList(FileInfo file, bool debug)
     }
 
     var cmdlets = pipeline.Cmdlets.Cmdlets;
-    Console.WriteLine($"PowerShell cmdlet catalog: {cmdlets.Count} cmdlets ({pipeline.Cmdlets.Hash[..19]}...)");
+    Console.WriteLine($"Tool catalog: {cmdlets.Count} tools ({pipeline.Cmdlets.Hash[..19]}...)");
     foreach (var entry in cmdlets.OrderBy(c => c.Name, StringComparer.Ordinal))
     {
         var granted = entry.Effect == Writ.Compiler.Ir.EffectKind.Pure || result.GrantedEffects.Contains(entry.Effect);
         var phrases = string.Join(" | ", entry.Phrases.Take(3));
-        Console.WriteLine($"  {(granted ? " " : "x")} pwsh.{entry.Name} -> {DescribeType(entry.Output)}  [{entry.Effect}]  {phrases}");
+        var prefix = Writ.Compiler.Capabilities.CmdletCatalog.CatalogPrefix(entry.Name);
+        Console.WriteLine($"  {(granted ? " " : "x")} {prefix}{entry.Name} -> {DescribeType(entry.Output)}  [{entry.Effect}]  {phrases}");
     }
 
-    Console.WriteLine("'x' marks a command this program has not allowed. Use 'writ tools inspect <file> pwsh.<Name>' for every phrase and parameter.");
+    Console.WriteLine("'x' marks a command this program has not allowed. Use 'writ tools inspect <file> pwsh.<Name>' or 'writ.<tool>' for every phrase and parameter.");
     return 0;
 }
 
@@ -317,15 +318,10 @@ static int RunToolsInspect(FileInfo file, string operation, bool debug)
 
     var pipeline = new CompilationPipeline();
     var result = pipeline.Compile(File.ReadAllText(file.FullName), file.FullName, emission: AutoEmission(), model: DebugOptions(debug));
-    if (operation.StartsWith("pwsh.", StringComparison.OrdinalIgnoreCase))
+    var toolName = Writ.Compiler.Capabilities.CmdletCatalog.ToolNameFromId(operation)
+        ?? (operation.Contains('.') ? operation : null);
+    if (toolName is not null && pipeline.Cmdlets.Find(toolName) is { } entry)
     {
-        var entry = pipeline.Cmdlets.Find(operation[5..]);
-        if (entry is null)
-        {
-            Console.Error.WriteLine($"No cmdlet named '{operation[5..]}' in the catalog.");
-            return 1;
-        }
-
         Console.WriteLine($"{entry.Name}  effect={entry.Effect}  output={DescribeType(entry.Output)}");
         Console.WriteLine($"  phrases: {string.Join(" | ", entry.Phrases)}");
         foreach (var parameter in entry.Parameters)
@@ -335,6 +331,13 @@ static int RunToolsInspect(FileInfo file, string operation, bool debug)
 
         Console.WriteLine($"  granted here: {(result.GrantedEffects.Contains(entry.Effect) || entry.Effect == Writ.Compiler.Ir.EffectKind.Pure ? "yes" : "no")}");
         return 0;
+    }
+
+    if (operation.StartsWith("pwsh.", StringComparison.OrdinalIgnoreCase) ||
+        operation.StartsWith("writ.", StringComparison.OrdinalIgnoreCase))
+    {
+        Console.Error.WriteLine($"No catalog tool named '{toolName ?? operation}'.");
+        return 1;
     }
 
     var dot = operation.IndexOf('.');

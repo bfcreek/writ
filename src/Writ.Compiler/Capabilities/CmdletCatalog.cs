@@ -17,8 +17,8 @@ public sealed record CmdletEntry(
     IReadOnlyDictionary<string, object> Fixed);
 
 /// <summary>
-/// The pinned list of PowerShell commands a program may bind. The compiler reads this file;
-/// it never runs Get-Command or any cmdlet.
+/// The pinned list of tools a program may bind: PowerShell-shaped catalog commands plus
+/// Writ-native dotted tools. The compiler reads these files; it never runs Get-Command.
 /// </summary>
 public sealed class CmdletCatalog
 {
@@ -37,7 +37,35 @@ public sealed class CmdletCatalog
 
     public static CmdletCatalog Default => Embedded.Value;
 
-    public static CmdletCatalog Parse(string json)
+    public static CmdletCatalog Parse(string json) => Merge([ParseOne(json)]);
+
+    public static CmdletCatalog Merge(IReadOnlyList<CmdletCatalog> parts)
+    {
+        var cmdlets = new List<CmdletEntry>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var versions = new List<string>();
+        var hashMaterial = new StringBuilder();
+        foreach (var part in parts)
+        {
+            versions.Add(part.Version);
+            hashMaterial.Append(part.Hash).Append('\n');
+            foreach (var entry in part.Cmdlets)
+            {
+                if (!seen.Add(entry.Name))
+                {
+                    throw new InvalidOperationException($"Duplicate catalog tool '{entry.Name}'.");
+                }
+
+                cmdlets.Add(entry);
+            }
+        }
+
+        var hash = "sha256:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hashMaterial.ToString())))
+            .ToLowerInvariant();
+        return new CmdletCatalog(string.Join("+", versions), hash, cmdlets);
+    }
+
+    public static CmdletCatalog ParseOne(string json)
     {
         using var document = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
         var root = document.RootElement;
@@ -60,7 +88,6 @@ public sealed class CmdletCatalog
                 }
             }
 
-            // A fixed argument is a switch (true) or a constant text value, such as -PSProvider FileSystem.
             var fixedArguments = new Dictionary<string, object>(StringComparer.Ordinal);
             if (element.TryGetProperty("fixed", out var fixedObject))
             {
@@ -92,9 +119,30 @@ public sealed class CmdletCatalog
     public CmdletEntry? Find(string name) =>
         Cmdlets.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
 
+    public static string CatalogPrefix(string name) =>
+        name.Contains('.', StringComparison.Ordinal) ? "writ." : "pwsh.";
+
+    public static bool IsCatalogToolId(string id) =>
+        id.StartsWith("pwsh.", StringComparison.Ordinal) || id.StartsWith("writ.", StringComparison.Ordinal);
+
+    public static string? ToolNameFromId(string id)
+    {
+        if (id.StartsWith("pwsh.", StringComparison.Ordinal))
+        {
+            return id["pwsh.".Length..];
+        }
+
+        if (id.StartsWith("writ.", StringComparison.Ordinal))
+        {
+            return id["writ.".Length..];
+        }
+
+        return null;
+    }
+
     public IEnumerable<CatalogEntry> AsCatalogEntries() =>
         Cmdlets.Select(c => new CatalogEntry(
-            "pwsh." + c.Name,
+            CatalogPrefix(c.Name) + c.Name,
             string.Join(" | ", c.Phrases),
             c.Parameters.Select(p => p.Name).ToList(),
             c.Parameters.ToDictionary(p => p.Name, p => p.Aliases, StringComparer.Ordinal),
@@ -134,9 +182,16 @@ public sealed class CmdletCatalog
 
     private static CmdletCatalog LoadEmbedded()
     {
-        using var stream = typeof(CmdletCatalog).Assembly.GetManifestResourceStream("powershell.catalog.json")
-            ?? throw new InvalidOperationException("powershell.catalog.json is not embedded.");
+        var powershell = ReadResource("powershell.catalog.json");
+        var writ = ReadResource("writ.catalog.json");
+        return Merge([ParseOne(powershell), ParseOne(writ)]);
+    }
+
+    private static string ReadResource(string name)
+    {
+        using var stream = typeof(CmdletCatalog).Assembly.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException($"{name} is not embedded.");
         using var reader = new StreamReader(stream);
-        return Parse(reader.ReadToEnd());
+        return reader.ReadToEnd();
     }
 }

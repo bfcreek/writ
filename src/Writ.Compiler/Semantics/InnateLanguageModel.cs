@@ -205,7 +205,7 @@ public sealed partial class InnateLanguageModel : ILanguageModel
         var commandMatches = new List<(CatalogEntry Entry, int PhraseLength)>();
         foreach (var operation in request.Operations)
         {
-            if (operation.Id.StartsWith("pwsh.", StringComparison.Ordinal))
+            if (Writ.Compiler.Capabilities.CmdletCatalog.IsCatalogToolId(operation.Id))
             {
                 var length = LongestPhrase(clause, operation);
                 if (length > 0)
@@ -271,7 +271,7 @@ public sealed partial class InnateLanguageModel : ILanguageModel
 
     private static bool ClauseMentions(string clause, CatalogEntry operation)
     {
-        if (operation.Id.StartsWith("pwsh.", StringComparison.Ordinal))
+        if (Writ.Compiler.Capabilities.CmdletCatalog.IsCatalogToolId(operation.Id))
         {
             return LongestPhrase(clause, operation) > 0;
         }
@@ -388,7 +388,7 @@ public sealed partial class InnateLanguageModel : ILanguageModel
             .OrderBy(found => found.At)
             .Select(found => found.Name)
             .ToList();
-        var positional = operation.Id.StartsWith("pwsh.", StringComparison.Ordinal)
+        var positional = Writ.Compiler.Capabilities.CmdletCatalog.IsCatalogToolId(operation.Id)
             ? open
             : open.Take(1).ToList();
         foreach (var argument in positional.Where(argument => !bindings.ContainsKey(argument)))

@@ -1,0 +1,329 @@
+{
+  "version": "writ-native-1",
+  "cmdlets": [
+    {
+      "name": "text.trim",
+      "phrases": ["the trimmed text", "trim the text", "trimmed"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "string", "content"] }
+      ]
+    },
+    {
+      "name": "text.upper",
+      "phrases": ["the uppercase text", "uppercase", "upper case"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "string"] }
+      ]
+    },
+    {
+      "name": "text.lower",
+      "phrases": ["the lowercase text", "lowercase", "lower case"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "string"] }
+      ]
+    },
+    {
+      "name": "text.slug",
+      "phrases": ["the slug of", "slugify", "a slug from"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "string", "title"] }
+      ]
+    },
+    {
+      "name": "text.base64encode",
+      "phrases": ["the base64 of", "base64 encode", "encode as base64"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "string"] }
+      ]
+    },
+    {
+      "name": "text.base64decode",
+      "phrases": ["decode the base64", "base64 decode"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "string", "base64"] }
+      ]
+    },
+    {
+      "name": "text.urlencode",
+      "phrases": ["the url encoded", "url encode", "encode for a url"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "string"] }
+      ]
+    },
+    {
+      "name": "text.urldecode",
+      "phrases": ["the url decoded", "url decode", "decode the url"],
+      "effect": "pure",
+      "output": "string",
+      "parameters": [
+        { "name": "Value", "type": "string", "required": true, "aliases": ["text", "value", "string"] }
+      ]
+    },
+    {
+      "name": "date.add",
+      "phrases": ["add days to the date", "the date plus", "days after"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Date", "type": "string", "required": true, "aliases": ["date", "when", "timestamp"] },
+        { "name": "Days", "type": "integer", "aliases": ["days", "day"] },
+        { "name": "Hours", "type": "integer", "aliases": ["hours", "hour"] }
+      ]
+    },
+    {
+      "name": "date.daysbetween",
+      "phrases": ["the days between", "days between"],
+      "effect": "pure",
+      "output": "integer",
+      "parameters": [
+        { "name": "Start", "type": "string", "required": true, "aliases": ["start", "from", "begin", "first"] },
+        { "name": "End", "type": "string", "required": true, "aliases": ["end", "to", "until", "second"] }
+      ]
+    },
+    {
+      "name": "date.utcnow",
+      "phrases": ["the utc time", "now in utc", "the current utc time", "utc now"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": []
+    },
+    {
+      "name": "list.distinct",
+      "phrases": ["the distinct", "unique items", "without duplicates"],
+      "effect": "pure",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["list", "items", "values", "collection"] }
+      ]
+    },
+    {
+      "name": "list.reverse",
+      "phrases": ["the reversed", "reversed", "in reverse"],
+      "effect": "pure",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["list", "items", "values", "collection"] }
+      ]
+    },
+    {
+      "name": "list.flatten",
+      "phrases": ["the flattened", "flatten", "flattened list"],
+      "effect": "pure",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["list", "items", "values", "collection"] }
+      ]
+    },
+    {
+      "name": "list.skip",
+      "phrases": ["skip the first", "skipping", "without the first"],
+      "effect": "pure",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["list", "items", "values", "collection"] },
+        { "name": "Count", "type": "integer", "required": true, "aliases": ["count", "number", "n"] }
+      ]
+    },
+    {
+      "name": "list.min",
+      "phrases": ["the minimum of", "the smallest of", "min of"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["list", "items", "values", "numbers"] }
+      ]
+    },
+    {
+      "name": "list.max",
+      "phrases": ["the maximum of", "the largest of", "max of"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["list", "items", "values", "numbers"] }
+      ]
+    },
+    {
+      "name": "list.average",
+      "phrases": ["the average of", "the mean of", "average of"],
+      "effect": "pure",
+      "output": "decimal",
+      "parameters": [
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["list", "items", "values", "numbers"] }
+      ]
+    },
+    {
+      "name": "json.path",
+      "phrases": ["the value at", "json path", "the path in the data"],
+      "effect": "pure",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "pointer", "jsonpath"] },
+        { "name": "InputObject", "type": "dynamic", "required": true, "aliases": ["data", "json", "object", "document", "payload"] }
+      ]
+    },
+    {
+      "name": "secret.get",
+      "phrases": ["the secret", "read the secret", "secret named"],
+      "effect": "secret-read",
+      "output": "string",
+      "parameters": [
+        { "name": "Name", "type": "string", "required": true, "aliases": ["name", "key", "secret", "secret name"] }
+      ]
+    },
+    {
+      "name": "http.post",
+      "phrases": ["post to the url", "post json to", "http post"],
+      "effect": "network-write",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Uri", "type": "string", "required": true, "aliases": ["url", "uri", "address", "endpoint"] },
+        { "name": "Body", "type": "dynamic", "aliases": ["body", "json", "payload", "content", "data"] },
+        { "name": "Headers", "type": "dynamic", "aliases": ["headers", "header"] }
+      ]
+    },
+    {
+      "name": "http.put",
+      "phrases": ["put to the url", "put json to", "http put"],
+      "effect": "network-write",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Uri", "type": "string", "required": true, "aliases": ["url", "uri", "address", "endpoint"] },
+        { "name": "Body", "type": "dynamic", "aliases": ["body", "json", "payload", "content", "data"] },
+        { "name": "Headers", "type": "dynamic", "aliases": ["headers", "header"] }
+      ]
+    },
+    {
+      "name": "log.write",
+      "phrases": ["log", "write a log", "log the message"],
+      "effect": "pure",
+      "output": "void",
+      "parameters": [
+        { "name": "Message", "type": "string", "required": true, "aliases": ["message", "text", "line"] },
+        { "name": "Level", "type": "string", "aliases": ["level", "severity", "at"] }
+      ]
+    },
+    {
+      "name": "obs.calls",
+      "phrases": ["the calls so far", "the call log", "logged calls"],
+      "effect": "pure",
+      "output": "list of dynamic",
+      "parameters": []
+    },
+    {
+      "name": "obs.elapsed",
+      "phrases": ["the elapsed milliseconds", "elapsed time", "milliseconds elapsed"],
+      "effect": "pure",
+      "output": "integer",
+      "parameters": []
+    },
+    {
+      "name": "store.remember",
+      "phrases": ["remember as", "store the value as", "save under the key"],
+      "effect": "filesystem-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Key", "type": "string", "required": true, "aliases": ["key", "name", "id"] },
+        { "name": "Value", "type": "dynamic", "required": true, "aliases": ["value", "data", "content", "text"] }
+      ]
+    },
+    {
+      "name": "store.recall",
+      "phrases": ["the remembered", "recall the key", "load the remembered"],
+      "effect": "filesystem-read",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Key", "type": "string", "required": true, "aliases": ["key", "name", "id"] }
+      ]
+    },
+    {
+      "name": "notify.webhook",
+      "phrases": ["send to the webhook", "post to the webhook", "notify the webhook"],
+      "effect": "network-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Uri", "type": "string", "required": true, "aliases": ["url", "uri", "webhook", "endpoint"] },
+        { "name": "Message", "type": "string", "required": true, "aliases": ["message", "text", "body", "content"] }
+      ]
+    },
+    {
+      "name": "notify.email",
+      "phrases": ["send email", "email to", "send an email"],
+      "effect": "network-write",
+      "output": "void",
+      "parameters": [
+        { "name": "To", "type": "string", "required": true, "aliases": ["to", "recipient", "address"] },
+        { "name": "Subject", "type": "string", "required": true, "aliases": ["subject", "title"] },
+        { "name": "Body", "type": "string", "required": true, "aliases": ["body", "message", "text", "content"] }
+      ]
+    },
+    {
+      "name": "notify.toast",
+      "phrases": ["show a toast", "toast notification", "desktop notification"],
+      "effect": "external-write",
+      "output": "void",
+      "parameters": [
+        { "name": "Message", "type": "string", "required": true, "aliases": ["message", "text", "body", "title"] }
+      ]
+    },
+    {
+      "name": "compiler.check",
+      "phrases": ["the diagnostics of checking", "check the writ file", "diagnostics for"],
+      "effect": "filesystem-read",
+      "output": "list of dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "script", "program"] }
+      ]
+    },
+    {
+      "name": "compiler.explain",
+      "phrases": ["explain the writ file", "the explanation of", "explain"],
+      "effect": "filesystem-read",
+      "output": "string",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "script", "program"] }
+      ]
+    },
+    {
+      "name": "compiler.lock-info",
+      "phrases": ["the lock of", "lock info for", "the lockfile for"],
+      "effect": "filesystem-read",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Path", "type": "string", "required": true, "aliases": ["path", "file", "script", "program"] }
+      ]
+    },
+    {
+      "name": "ai.infer",
+      "phrases": ["infer from", "ask the model", "infer"],
+      "effect": "runtime-ai",
+      "output": "dynamic",
+      "parameters": [
+        { "name": "Prompt", "type": "string", "required": true, "aliases": ["prompt", "message", "text", "question", "input"] }
+      ]
+    },
+    {
+      "name": "process.output",
+      "phrases": ["the output of running", "output of", "capture output from"],
+      "effect": "external-write",
+      "output": "string",
+      "parameters": [
+        { "name": "FilePath", "type": "string", "required": true, "aliases": ["program", "command", "executable", "file", "path"] },
+        { "name": "ArgumentList", "type": "string", "aliases": ["arguments", "args", "parameters"] }
+      ]
+    }
+  ]
+}

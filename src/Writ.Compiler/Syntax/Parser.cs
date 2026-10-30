@@ -259,15 +259,23 @@ public sealed partial class Parser
         var alias = ParseName();
         Consume(TokenKind.From, "Expected 'from' and a manifest path.");
         var kind = "file";
-        if (Check(TokenKind.Identifier) && Peek().Text.Equals("mcp", StringComparison.OrdinalIgnoreCase))
+        if (Check(TokenKind.Identifier))
         {
-            Advance();
-            kind = "mcp";
+            var marker = Peek().Text.ToLowerInvariant();
+            if (marker is "mcp" or "sqlite" or "http")
+            {
+                Advance();
+                kind = marker;
+            }
         }
 
-        var path = Consume(TokenKind.StringLiteral, kind == "mcp"
-            ? "Expected the MCP server command line in quotes."
-            : "Expected the manifest path in quotes.");
+        var path = Consume(TokenKind.StringLiteral, kind switch
+        {
+            "mcp" => "Expected the MCP server command line in quotes.",
+            "sqlite" => "Expected the SQLite database path in quotes.",
+            "http" => "Expected the OpenAPI document path or base URL in quotes.",
+            _ => "Expected the manifest path in quotes."
+        });
         Match(TokenKind.NewLine);
         return new UseDeclAst(alias.Camel, path.Literal as string ?? path.Text, Combine(start, path.Span), kind);
     }
@@ -434,6 +442,11 @@ public sealed partial class Parser
         if (Check(TokenKind.Return) || Check(TokenKind.Give))
         {
             return ParseReturn();
+        }
+
+        if (Check(TokenKind.Ensure))
+        {
+            return ParseEnsure();
         }
 
         if (Check(TokenKind.Say) || IsConsoleVerb())
@@ -1290,6 +1303,14 @@ public sealed partial class Parser
         return new SayStmtAst(parts, Combine(start, parts[^1].Span));
     }
 
+    private EnsureStmtAst ParseEnsure()
+    {
+        var start = Consume(TokenKind.Ensure, "Expected 'ensure'.").Span;
+        var condition = ParseExpression();
+        Match(TokenKind.NewLine);
+        return new EnsureStmtAst(condition, Combine(start, condition.Span));
+    }
+
     private WhileStmtAst ParseWhile()
     {
         var keyword = Advance();
@@ -1576,15 +1597,14 @@ public sealed partial class Parser
                 Advance();
                 expr = new CallExprAst(builtin, [expr], Combine(expr.Span, cast.Span));
             }
-            else if (cast.Kind == TokenKind.Identifier && cast.Text.Equals("json", StringComparison.OrdinalIgnoreCase))
+            else if (cast.Kind == TokenKind.Identifier &&
+                     (cast.Text.Equals("json", StringComparison.OrdinalIgnoreCase) ||
+                      cast.Text.Equals("csv", StringComparison.OrdinalIgnoreCase) ||
+                      cast.Text.Equals("yaml", StringComparison.OrdinalIgnoreCase) ||
+                      cast.Text.Equals("xml", StringComparison.OrdinalIgnoreCase)))
             {
                 Advance();
-                expr = new CallExprAst("json", [expr], Combine(expr.Span, cast.Span));
-            }
-            else if (cast.Kind == TokenKind.Identifier && cast.Text.Equals("csv", StringComparison.OrdinalIgnoreCase))
-            {
-                Advance();
-                expr = new CallExprAst("csv", [expr], Combine(expr.Span, cast.Span));
+                expr = new CallExprAst(cast.Text.ToLowerInvariant(), [expr], Combine(expr.Span, cast.Span));
             }
             else if (cast.Kind == TokenKind.Identifier && IsPrimitiveName(cast.Text))
             {
@@ -1806,6 +1826,20 @@ public sealed partial class Parser
 
     private ExprAst ParsePrimary()
     {
+        if (Check(TokenKind.Infer))
+        {
+            var start = Advance().Span;
+            // "infer category from the message" or "infer "prompt""
+            if (Check(TokenKind.StringLiteral))
+            {
+                var literal = Advance();
+                return new InferExprAst(new LiteralExprAst(literal.Literal ?? literal.Text, literal.Span), Combine(start, literal.Span));
+            }
+
+            var prompt = ParseExpression();
+            return new InferExprAst(prompt, Combine(start, prompt.Span));
+        }
+
         if (Match(TokenKind.LeftParen))
         {
             var inner = ParseExpression();

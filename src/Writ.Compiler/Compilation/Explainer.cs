@@ -87,7 +87,8 @@ public static class Explainer
         IrValidate validate => $"check the data is a {Describe(validate.Type)}",
         IrSumProjection sum when sum.Provenance == Provenance.ResolvedByModel => $"sum of {DescribeProjection(sum)} (template)",
         IrFilter filter when filter.Provenance == Provenance.ResolvedByModel => "filter (template)",
-        IrCall { Callee: "json" or "csv" } call => $"parse as {call.Callee.ToUpperInvariant()}",
+        IrCall { Callee: "json" or "csv" or "yaml" or "xml" } call => $"parse as {call.Callee.ToUpperInvariant()}",
+        IrEnsure ensure => $"ensure {DescribeNode(ensure.Condition)}",
         IrCall { Callee: "env" } => "read an environment variable",
         _ => null
     };
@@ -178,6 +179,7 @@ public static class Explainer
         EffectKind.NetworkWrite => "sends outside",
         EffectKind.ExternalState => "changes something outside",
         EffectKind.RuntimeAi => "asks a model at run time",
+        EffectKind.SecretRead => "reads secrets",
         EffectKind.Script => "runs a script",
         _ => effect.ToString()
     };

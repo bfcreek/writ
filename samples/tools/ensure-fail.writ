@@ -1,0 +1,4 @@
+﻿# Ensure fails closed.
+When run, returning a string
+    ensure 1 is equal to 2
+    return "unreachable"

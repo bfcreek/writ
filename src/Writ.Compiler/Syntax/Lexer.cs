@@ -58,6 +58,8 @@ public sealed class Lexer
         ["smallest"] = TokenKind.Smallest,
         ["when"] = TokenKind.When,
         ["allow"] = TokenKind.Allow,
+        ["ensure"] = TokenKind.Ensure,
+        ["infer"] = TokenKind.Infer,
         ["use"] = TokenKind.Use,
         ["from"] = TokenKind.From,
         ["ask"] = TokenKind.Ask,

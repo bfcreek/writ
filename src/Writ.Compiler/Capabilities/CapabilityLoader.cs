@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Writ.Compiler.Diagnostics;
 using Writ.Compiler.Ir;
@@ -66,6 +67,16 @@ public sealed class FileCapabilityLoader : ICapabilityLoader
         if (source.Kind == "mcp")
         {
             return LoadFromMcp(alias, source, sourceFile, diagnostics, span, workingDirectory);
+        }
+
+        if (source.Kind == "sqlite")
+        {
+            return LoadFromSqliteSource(alias, source, sourceFile, diagnostics, span, workingDirectory);
+        }
+
+        if (source.Kind == "http")
+        {
+            return LoadFromHttpSource(alias, source, sourceFile, diagnostics, span, workingDirectory);
         }
 
         var fullPath = ResolvePath(source.Location, sourceFile);
@@ -254,15 +265,67 @@ public sealed class FileCapabilityLoader : ICapabilityLoader
 
                 break;
             case "powershell-module":
+                if (string.IsNullOrWhiteSpace(endpoint))
+                {
+                    errors.Add("A 'powershell-module' provider needs a 'module'.");
+                }
+
+                break;
             case "http":
                 if (string.IsNullOrWhiteSpace(endpoint))
                 {
-                    errors.Add($"A '{provider}' provider needs a '{(provider == "http" ? "baseUrl" : "module")}'.");
+                    errors.Add("An 'http' provider needs a 'baseUrl' or an OpenAPI document path in 'command'.");
+                    break;
+                }
+
+                try
+                {
+                    var openApiPath = ResolveMaybeRelative(endpoint, manifestDirectory);
+                    if (File.Exists(openApiPath))
+                    {
+                        var discovered = DiscoverOpenApi(openApiPath, records, errors);
+                        foreach (var pair in discovered.Operations)
+                        {
+                            operations[pair.Key] = pair.Value;
+                        }
+
+                        discoveryHash = discovered.Hash;
+                        endpoint = discovered.BaseUrl;
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or JsonException or IOException)
+                {
+                    errors.Add(ex.Message);
+                }
+
+                break;
+            case "sqlite":
+                if (string.IsNullOrWhiteSpace(endpoint))
+                {
+                    errors.Add("A 'sqlite' provider needs a database path in 'command' or 'module'.");
+                    break;
+                }
+
+                try
+                {
+                    var dbPath = ResolveMaybeRelative(endpoint, manifestDirectory);
+                    var schema = DiscoverSqlite(dbPath, errors);
+                    foreach (var pair in schema.Operations)
+                    {
+                        operations[pair.Key] = pair.Value;
+                    }
+
+                    typeDecls.AddRange(schema.Types);
+                    discoveryHash = schema.Hash;
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException or IOException)
+                {
+                    errors.Add(ex.Message);
                 }
 
                 break;
             default:
-                errors.Add($"Unknown provider kind '{provider}'. Use mock, mcp, powershell-module, or http.");
+                errors.Add($"Unknown provider kind '{provider}'. Use mock, mcp, powershell-module, http, or sqlite.");
                 break;
         }
 
@@ -290,6 +353,122 @@ public sealed class FileCapabilityLoader : ICapabilityLoader
             Transport = provider == "mcp" ? McpDiscovery.TransportOf(endpoint) : "stdio",
             WorkingDirectory = manifestDirectory,
             DiscoveryHash = discoveryHash,
+            Source = source
+        };
+    }
+
+    private static LoadedCapability? LoadFromHttpSource(
+        string alias,
+        CapabilitySource source,
+        string? sourceFile,
+        DiagnosticBag diagnostics,
+        SourceSpan span,
+        string? workingDirectory)
+    {
+        workingDirectory ??= string.IsNullOrEmpty(sourceFile)
+            ? Directory.GetCurrentDirectory()
+            : Path.GetDirectoryName(Path.GetFullPath(sourceFile));
+        var location = source.Location;
+        if (location.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            location.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return new LoadedCapability
+            {
+                Alias = alias,
+                VersionHash = Sha256(location),
+                ManifestPath = "",
+                GrantedEffects = [EffectKind.NetworkRead, EffectKind.NetworkWrite],
+                AllowedOperations = ["GET /", "POST /"],
+                Operations = new Dictionary<string, BoundOperation>(StringComparer.Ordinal)
+                {
+                    ["GET /"] = new("GET /", [], IrDynamicType.Instance, [EffectKind.NetworkRead]),
+                    ["POST /"] = new("POST /", [new BoundArgument("body", IrDynamicType.Instance, false)], IrDynamicType.Instance, [EffectKind.NetworkWrite])
+                },
+                Types = [],
+                Provider = "http",
+                Endpoint = location.TrimEnd('/'),
+                Transport = "http",
+                WorkingDirectory = workingDirectory,
+                DiscoveryHash = Sha256(location),
+                Source = source
+            };
+        }
+
+        var errors = new List<string>();
+        var openApiPath = ResolveMaybeRelative(location, workingDirectory);
+        if (!File.Exists(openApiPath))
+        {
+            diagnostics.Error("E4001", $"OpenAPI document not found: {location}", sourceFile, span);
+            return null;
+        }
+
+        var discovered = DiscoverOpenApi(openApiPath, new Dictionary<string, IrRecordType>(), errors);
+        if (errors.Count > 0)
+        {
+            foreach (var error in errors)
+            {
+                diagnostics.Error("E4001", error, sourceFile, span);
+            }
+
+            return null;
+        }
+
+        return new LoadedCapability
+        {
+            Alias = alias,
+            VersionHash = discovered.Hash,
+            ManifestPath = openApiPath,
+            GrantedEffects = [EffectKind.NetworkRead, EffectKind.NetworkWrite],
+            AllowedOperations = discovered.Operations.Keys.ToList(),
+            Operations = discovered.Operations,
+            Types = [],
+            Provider = "http",
+            Endpoint = discovered.BaseUrl,
+            Transport = "http",
+            WorkingDirectory = workingDirectory,
+            DiscoveryHash = discovered.Hash,
+            Source = source
+        };
+    }
+
+    private static LoadedCapability? LoadFromSqliteSource(
+        string alias,
+        CapabilitySource source,
+        string? sourceFile,
+        DiagnosticBag diagnostics,
+        SourceSpan span,
+        string? workingDirectory)
+    {
+        workingDirectory ??= string.IsNullOrEmpty(sourceFile)
+            ? Directory.GetCurrentDirectory()
+            : Path.GetDirectoryName(Path.GetFullPath(sourceFile));
+        var errors = new List<string>();
+        var dbPath = ResolveMaybeRelative(source.Location, workingDirectory);
+        var schema = DiscoverSqlite(dbPath, errors);
+        if (errors.Count > 0)
+        {
+            foreach (var error in errors)
+            {
+                diagnostics.Error("E4001", error, sourceFile, span);
+            }
+
+            return null;
+        }
+
+        return new LoadedCapability
+        {
+            Alias = alias,
+            VersionHash = schema.Hash,
+            ManifestPath = "",
+            GrantedEffects = [EffectKind.FileSystemRead, EffectKind.FileSystemWrite],
+            AllowedOperations = schema.Operations.Keys.ToList(),
+            Operations = schema.Operations,
+            Types = schema.Types,
+            Provider = "sqlite",
+            Endpoint = dbPath,
+            Transport = "sqlite",
+            WorkingDirectory = workingDirectory,
+            DiscoveryHash = schema.Hash,
             Source = source
         };
     }
@@ -397,6 +576,151 @@ public sealed class FileCapabilityLoader : ICapabilityLoader
         return Path.GetFullPath(Path.Combine(directory, manifestPath));
     }
 
+    private static string ResolveMaybeRelative(string path, string? directory)
+    {
+        if (Path.IsPathRooted(path) || path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        return Path.GetFullPath(Path.Combine(directory ?? Directory.GetCurrentDirectory(), path));
+    }
+
+    private static (Dictionary<string, BoundOperation> Operations, string Hash, string BaseUrl) DiscoverOpenApi(
+        string path,
+        IReadOnlyDictionary<string, IrRecordType> records,
+        List<string> errors)
+    {
+        var json = File.ReadAllText(path);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var baseUrl = "http://127.0.0.1";
+        if (root.TryGetProperty("servers", out var servers) && servers.ValueKind == JsonValueKind.Array &&
+            servers.GetArrayLength() > 0 && servers[0].TryGetProperty("url", out var url))
+        {
+            baseUrl = url.GetString()?.TrimEnd('/') ?? baseUrl;
+        }
+
+        var operations = new Dictionary<string, BoundOperation>(StringComparer.Ordinal);
+        if (root.TryGetProperty("paths", out var paths) && paths.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var pathItem in paths.EnumerateObject())
+            {
+                foreach (var method in pathItem.Value.EnumerateObject())
+                {
+                    if (method.Name is not ("get" or "post" or "put" or "delete"))
+                    {
+                        continue;
+                    }
+
+                    var name = method.Value.TryGetProperty("operationId", out var id) && id.ValueKind == JsonValueKind.String
+                        ? id.GetString()!
+                        : $"{method.Name.ToUpperInvariant()} {pathItem.Name}";
+                    var args = new List<BoundArgument>();
+                    if (method.Value.TryGetProperty("parameters", out var parameters) && parameters.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var parameter in parameters.EnumerateArray())
+                        {
+                            var argName = parameter.TryGetProperty("name", out var n) ? n.GetString() ?? "arg" : "arg";
+                            var required = parameter.TryGetProperty("required", out var r) && r.ValueKind == JsonValueKind.True;
+                            args.Add(new BoundArgument(argName, IrDynamicType.Instance, required));
+                        }
+                    }
+
+                    var effect = method.Name.Equals("get", StringComparison.OrdinalIgnoreCase)
+                        ? EffectKind.NetworkRead
+                        : EffectKind.NetworkWrite;
+                    operations[name] = new BoundOperation(name, args, IrDynamicType.Instance, [effect]);
+                }
+            }
+        }
+
+        if (operations.Count == 0)
+        {
+            errors.Add($"OpenAPI document '{path}' declared no get/post/put/delete operations.");
+        }
+
+        return (operations, Sha256(json), baseUrl);
+    }
+
+    private static (Dictionary<string, BoundOperation> Operations, List<IrTypeDecl> Types, string Hash) DiscoverSqlite(
+        string dbPath,
+        List<string> errors)
+    {
+        if (!File.Exists(dbPath))
+        {
+            errors.Add($"SQLite database not found: {dbPath}");
+            return ([], [], Sha256(dbPath));
+        }
+
+        var operations = new Dictionary<string, BoundOperation>(StringComparer.Ordinal);
+        var types = new List<IrTypeDecl>();
+        var schema = new StringBuilder();
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+        connection.Open();
+        using (var tables = connection.CreateCommand())
+        {
+            tables.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
+            using var reader = tables.ExecuteReader();
+            while (reader.Read())
+            {
+                var table = reader.GetString(0);
+                schema.Append(table).Append(':');
+                var fields = new List<IrField>();
+                using var info = connection.CreateCommand();
+                info.CommandText = $"PRAGMA table_info(\"{table.Replace("\"", "\"\"")}\")";
+                using var columns = info.ExecuteReader();
+                while (columns.Read())
+                {
+                    var column = columns.GetString(1);
+                    var declared = columns.GetString(2);
+                    var type = MapSqliteType(declared);
+                    fields.Add(new IrField(column, type));
+                    schema.Append(column).Append('=').Append(declared).Append(';');
+                }
+
+                var record = new IrRecordType(table, fields);
+                types.Add(new IrTypeDecl(table, fields, default, record));
+                operations[table] = new BoundOperation(table, [], new IrListType(record), [EffectKind.FileSystemRead]);
+            }
+        }
+
+        operations["query"] = new BoundOperation(
+            "query",
+            [new BoundArgument("sql", IrPrimitiveType.String, true)],
+            new IrListType(IrDynamicType.Instance),
+            [EffectKind.FileSystemRead]);
+        operations["execute"] = new BoundOperation(
+            "execute",
+            [new BoundArgument("sql", IrPrimitiveType.String, true)],
+            IrPrimitiveType.Integer,
+            [EffectKind.FileSystemWrite]);
+
+        return (operations, types, Sha256(schema.ToString()));
+    }
+
+    private static IrType MapSqliteType(string declared)
+    {
+        var text = declared.ToLowerInvariant();
+        if (text.Contains("int"))
+        {
+            return IrPrimitiveType.Integer;
+        }
+
+        if (text.Contains("real") || text.Contains("floa") || text.Contains("doub") || text.Contains("dec"))
+        {
+            return IrPrimitiveType.Decimal;
+        }
+
+        if (text.Contains("bool"))
+        {
+            return IrPrimitiveType.Boolean;
+        }
+
+        return IrPrimitiveType.String;
+    }
+
     private static IrType? ParseType(string text, IReadOnlyDictionary<string, IrRecordType> records, List<string> errors)
     {
         var trimmed = text.Trim();
@@ -452,6 +776,15 @@ public sealed class FileCapabilityLoader : ICapabilityLoader
                 return true;
             case "filesystem-write":
                 effect = EffectKind.FileSystemWrite;
+                return true;
+            case "runtime-ai":
+                effect = EffectKind.RuntimeAi;
+                return true;
+            case "secret-read":
+                effect = EffectKind.SecretRead;
+                return true;
+            case "script":
+                effect = EffectKind.Script;
                 return true;
             default:
                 effect = EffectKind.Pure;

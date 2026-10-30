@@ -46,6 +46,8 @@ public static partial class Machine
         public string ScriptDirectory { get; init; } = "";
         public string PreviousDirectory { get; init; } = "";
         public List<string> CallLog { get; } = [];
+        public System.Diagnostics.Stopwatch Stopwatch { get; } = System.Diagnostics.Stopwatch.StartNew();
+        public Dictionary<string, object?> Mocks { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     public static IMachineIo Io
@@ -62,15 +64,61 @@ public static partial class Machine
 
     public static IReadOnlyList<string> CallLog => Ambient.Value?.CallLog ?? [];
 
-    public static void BindAmbient(bool dryRun = false, string? scriptDirectory = null) =>
-        Ambient.Value = new AmbientState
+    public static void BindAmbient(bool dryRun = false, string? scriptDirectory = null)
+    {
+        var directory = string.IsNullOrWhiteSpace(scriptDirectory)
+            ? Directory.GetCurrentDirectory()
+            : Path.GetFullPath(scriptDirectory);
+        var state = new AmbientState
         {
             DryRun = dryRun,
-            ScriptDirectory = string.IsNullOrWhiteSpace(scriptDirectory)
-                ? Directory.GetCurrentDirectory()
-                : Path.GetFullPath(scriptDirectory),
+            ScriptDirectory = directory,
             PreviousDirectory = Directory.GetCurrentDirectory()
         };
+        LoadMocks(state, directory);
+        Ambient.Value = state;
+    }
+
+    private static void LoadMocks(AmbientState state, string scriptDirectory)
+    {
+        foreach (var path in new[]
+                 {
+                     Path.Combine(scriptDirectory, "writ.mocks.json"),
+                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".writ", "writ.mocks.json")
+                 })
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                    property.Value.TryGetProperty("result", out var result))
+                {
+                    state.Mocks[property.Name] = ToClr(result);
+                }
+            }
+        }
+    }
+
+    internal static bool TryMockTool(string name, out object? result)
+    {
+        if (Ambient.Value?.Mocks.TryGetValue(name, out result) == true)
+        {
+            return true;
+        }
+
+        result = null;
+        return false;
+    }
 
     public static void Unbind()
     {

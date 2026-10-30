@@ -321,6 +321,18 @@ public sealed partial class Binder
                 matched = true;
             }
 
+            if (text.Contains("secret"))
+            {
+                _grantedEffects.Add(EffectKind.SecretRead);
+                matched = true;
+            }
+
+            if (text.Contains("model") || text.Contains("infer") || (text.Contains("ask") && text.Contains("ai")))
+            {
+                _grantedEffects.Add(EffectKind.RuntimeAi);
+                matched = true;
+            }
+
             if (text.Contains("process") || text.Contains("service") || text.Contains("system") || text.Contains("external") || text.Contains("tool"))
             {
                 _grantedEffects.Add(EffectKind.NetworkRead);
@@ -335,7 +347,7 @@ public sealed partial class Binder
             if (!matched)
             {
                 _diagnostics.Error("E4007",
-                    $"'{phrase}' is not a permission this compiler knows. Try 'reading files', 'writing files', 'network access', 'changing processes', or 'running scripts'.",
+                    $"'{phrase}' is not a permission this compiler knows. Try 'reading files', 'writing files', 'network access', 'changing processes', 'running scripts', 'reading secrets', or 'asking a model'.",
                     _filePath, allow.Span);
             }
         }
@@ -431,7 +443,7 @@ public sealed partial class Binder
                     Lookup);
             }
             default:
-                return selection.Id.StartsWith("pwsh.", StringComparison.Ordinal)
+                return CmdletCatalog.IsCatalogToolId(selection.Id)
                     ? LowerCmdletSelection(selection, span, scope)
                     : LowerCapabilitySelection(selection, span, scope);
         }
@@ -439,7 +451,8 @@ public sealed partial class Binder
 
     private IrNode? LowerCmdletSelection(ModelSelection selection, SourceSpan span, Scope scope)
     {
-        var entry = _cmdlets.Find(selection.Id["pwsh.".Length..]);
+        var toolName = CmdletCatalog.ToolNameFromId(selection.Id);
+        var entry = toolName is null ? null : _cmdlets.Find(toolName);
         if (entry is null)
         {
             _diagnostics.Error("E4002", $"'{selection.Id}' is not in the pinned command catalog.", _filePath, span);
@@ -507,7 +520,7 @@ public sealed partial class Binder
             entry.Name,
             arguments,
             entry.Effect == EffectKind.Pure ? [EffectKind.Pure] : [entry.Effect],
-            $"pwsh:{entry.Name}@{_cmdlets.Hash}",
+            $"{CmdletCatalog.CatalogPrefix(entry.Name).TrimEnd('.')}:{entry.Name}@{_cmdlets.Hash}",
             span,
             entry.Output,
             Provenance.ResolvedByModel);
@@ -533,6 +546,8 @@ public sealed partial class Binder
         EffectKind.NetworkRead or EffectKind.NetworkWrite => "network access",
         EffectKind.ExternalState => "changing processes",
         EffectKind.Script => "running scripts",
+        EffectKind.SecretRead => "reading secrets",
+        EffectKind.RuntimeAi => "asking a model",
         _ => effect.ToString()
     };
 
@@ -1034,6 +1049,7 @@ public sealed partial class Binder
             ForEachStmtAst f => BindForEach(f, scope, returnType),
             ReturnStmtAst r => BindReturn(r, scope, returnType),
             SayStmtAst s => new IrSay(s.Parts.Select(p => BindExpression(p, scope)).ToList(), s.Span, IrVoidType.Instance),
+            EnsureStmtAst ensure => BindEnsure(ensure, scope),
             WhileStmtAst w => BindWhile(w, scope, returnType),
             TryStmtAst t => BindTry(t, scope, returnType),
             FlowStmtAst flow => BindFlow(flow, scope),
@@ -1296,9 +1312,38 @@ public sealed partial class Binder
             SortExprAst sort => BindSort(sort, scope),
             TakeExprAst take => BindTake(take, scope),
             TreatExprAst treat => BindTreat(treat, scope),
+            InferExprAst infer => BindInfer(infer, scope),
             ConstructExprAst construct => BindConstruct(construct, scope),
             _ => ErrorNode(expr.Span, "Unsupported expression.")
         };
+
+    private IrEnsure BindEnsure(EnsureStmtAst stmt, Scope scope)
+    {
+        var condition = BindExpression(stmt.Condition, scope);
+        if (condition.Type is not IrPrimitiveType { Name: "boolean" } and not IrErrorType)
+        {
+            _diagnostics.Error("E2010", "'ensure' needs a yes/no condition.", _filePath, stmt.Span);
+        }
+
+        return new IrEnsure(condition, "ensure failed", stmt.Span, IrVoidType.Instance);
+    }
+
+    private IrNode BindInfer(InferExprAst infer, Scope scope)
+    {
+        if (!EffectGranted("infer", EffectKind.RuntimeAi, infer.Span))
+        {
+            return ErrorNode(infer.Span, "infer requires Allow asking a model.");
+        }
+
+        var prompt = BindExpression(infer.Prompt, scope);
+        return new IrCommand(
+            "ai.infer",
+            [new IrNamedArgument("Prompt", prompt)],
+            [EffectKind.RuntimeAi],
+            $"writ:ai.infer@{_cmdlets.Hash}",
+            infer.Span,
+            IrDynamicType.Instance);
+    }
 
     private IrNode BindIntent(IntentExprAst intent, Scope scope)
     {
@@ -1536,6 +1581,7 @@ public sealed partial class Binder
         EffectKind.FileSystemWrite => "filesystem-write",
         EffectKind.Pure => "pure",
         EffectKind.RuntimeAi => "runtime-ai",
+        EffectKind.SecretRead => "secret-read",
         EffectKind.Script => "script",
         _ => effect.ToString()
     };
@@ -1921,7 +1967,7 @@ public sealed partial class Binder
             "int" => BindCast(args, call, IrPrimitiveType.Integer),
             "decimal" => BindCast(args, call, IrPrimitiveType.Decimal),
             "bool" => BindCast(args, call, IrPrimitiveType.Boolean),
-            "json" or "csv" => BindParse(sig.Name, args, call),
+            "json" or "csv" or "yaml" or "xml" => BindParse(sig.Name, args, call),
             "env" => new IrCall("env", args, true, [EffectKind.Pure], call.Span, IrPrimitiveType.String),
             _ => new IrCall(sig.Name, args, true, [EffectKind.Pure], call.Span, IrErrorType.Instance)
         };
@@ -2253,6 +2299,8 @@ public sealed partial class Binder
         Add("env", IrPrimitiveType.String, new IrParameter("name", IrPrimitiveType.String));
         Add("json", IrDynamicType.Instance, new IrParameter("text", IrPrimitiveType.String));
         Add("csv", new IrListType(IrDynamicType.Instance), new IrParameter("text", IrPrimitiveType.String));
+        Add("yaml", IrDynamicType.Instance, new IrParameter("text", IrPrimitiveType.String));
+        Add("xml", IrDynamicType.Instance, new IrParameter("text", IrPrimitiveType.String));
     }
 
     private IrCall BindParse(string format, List<IrNode> args, CallExprAst call)

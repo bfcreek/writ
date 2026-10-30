@@ -14,6 +14,12 @@ public sealed record AllowDeclAst(IReadOnlyList<string> Phrases, SourceSpan Span
 
 public sealed record SayStmtAst(IReadOnlyList<ExprAst> Parts, SourceSpan Span) : StmtAst(Span);
 
+/// <summary>"ensure the total is greater than 0" — halt when the condition is false.</summary>
+public sealed record EnsureStmtAst(ExprAst Condition, SourceSpan Span) : StmtAst(Span);
+
+/// <summary>"infer category from the message" — runtime model call; result is untyped data.</summary>
+public sealed record InferExprAst(ExprAst Prompt, SourceSpan Span) : ExprAst(Span);
+
 /// <summary>A sentence that is a command on its own line, such as "remove the folder".</summary>
 public sealed record ExpressionStmtAst(ExprAst Value, SourceSpan Span) : StmtAst(Span);
 

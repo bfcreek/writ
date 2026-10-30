@@ -43,6 +43,16 @@ Mock capabilities, retry, and MCP. Manifests live in this folder.
 | `mcp-payments.writ` | An MCP server named in the program |
 | `recover-failures-mcp.writ` | The same recovery through a capability manifest |
 
+## tools
+
+Native Machine tools and `ensure`.
+
+| File | What it shows |
+|------|----------------|
+| `stdlib.writ` | Slugify, uppercase, and `ensure` |
+| `ensure-fail.writ` | `ensure` halting the program |
+| `uptime.writ` | Catalog `Get-Uptime` on the C# Machine |
+
 ## scripts
 
 `call-both.writ` runs `greet.ps1` and `double.writ` and joins what they return.

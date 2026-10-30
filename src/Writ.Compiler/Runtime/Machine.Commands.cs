@@ -9,61 +9,76 @@ namespace Writ.Runtime;
 
 public static partial class Machine
 {
-    private static readonly HashSet<string> WriteCommands = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Set-Content", "Add-Content", "New-Item", "Copy-Item", "Move-Item", "Rename-Item", "Remove-Item",
-        "Compress-Archive", "Expand-Archive", "New-TemporaryFile", "Set-Location", "Clear-Host", "Start-Sleep",
-        "Export-Csv"
-    };
-
     public static object? InvokeCommand(string name, Dictionary<string, object?> arguments)
     {
         arguments = new Dictionary<string, object?>(arguments, StringComparer.OrdinalIgnoreCase);
-        if (DryRun && WriteCommands.Contains(name))
+        Ambient.Value?.CallLog.Add(name);
+        if (TryMockTool(name, out var mocked))
         {
-            Say($"What if: would run {name} with {JsonSerializer.Serialize(arguments)}");
+            return mocked;
+        }
+
+        if (DryRun && ToolRegistry.IsWrite(name))
+        {
+            var safe = name.StartsWith("secret.", StringComparison.OrdinalIgnoreCase)
+                ? "{}"
+                : JsonSerializer.Serialize(arguments);
+            Say($"What if: would run {name} with {safe}");
             return null;
         }
 
-        return name switch
+        if (ToolRegistry.TryInvoke(name, arguments, out var result))
         {
-            "Get-ChildItem" => GetChildItem(arguments),
-            "Get-Item" => GetItem(arguments),
-            "Get-Content" => File.ReadAllText(RequiredPath(arguments)),
-            "Set-Content" => WriteFile(arguments, append: false),
-            "Add-Content" => WriteFile(arguments, append: true),
-            "New-Item" => NewItem(arguments),
-            "Copy-Item" => CopyItem(arguments),
-            "Move-Item" => MoveItem(arguments),
-            "Rename-Item" => RenameItem(arguments),
-            "Remove-Item" => RemoveItem(arguments),
-            "Test-Path" => File.Exists(RequiredPath(arguments)) || Directory.Exists(RequiredPath(arguments)),
-            "Join-Path" => Path.Combine(Text(Arg(arguments, "Path")), Text(Arg(arguments, "ChildPath"))),
-            "Split-Path" => SplitPath(arguments),
-            "Resolve-Path" => Path.GetFullPath(RequiredPath(arguments)),
-            "Get-FileHash" => GetFileHash(arguments),
-            "Select-String" => SelectString(arguments),
-            "Compress-Archive" => CompressArchive(arguments),
-            "Expand-Archive" => ExpandArchive(arguments),
-            "New-TemporaryFile" => NewTemporaryFile(),
-            "Set-Location" => SetLocation(arguments),
-            "Get-Date" => GetDate(arguments),
-            "Get-Random" => GetRandom(arguments),
-            "New-Guid" => Guid.NewGuid().ToString(),
-            "ConvertTo-Json" => JsonSerializer.Serialize(Arg(arguments, "InputObject"), new JsonSerializerOptions { WriteIndented = false }),
-            "Measure-Object" => MeasureObject(arguments),
-            "Start-Sleep" => Sleep(arguments),
-            "Clear-Host" => ClearHost(),
-            "Read-Host" => Read(Text(Arg(arguments, "Prompt"))),
-            "Import-Csv" => ParseCsv(File.ReadAllText(RequiredPath(arguments))),
-            "Export-Csv" => ExportCsv(arguments),
-            "Import-Module" => null,
-            "Remove-Module" => null,
-            "throw" => throw new MachineHaltException(Text(arguments.Values.FirstOrDefault())),
-            "Write-Warning" => WriteMessage("WARNING: " + Text(Arg(arguments, "Message"))),
-            "Write-Verbose" => WriteMessage("VERBOSE: " + Text(Arg(arguments, "Message"))),
-            _ => throw new NotSupportedException($"Command '{name}' is not implemented by the C# Machine runtime.")
-        };
+            return result;
+        }
+
+        throw new NotSupportedException($"Command '{name}' is not implemented by the C# Machine runtime.");
+    }
+
+    /// <summary>Registers catalog-backed handlers. Called once from <see cref="ToolRegistry"/>.</summary>
+    internal static void RegisterBuiltinTools()
+    {
+        void R(string name, Func<Dictionary<string, object?>, object?> handler, bool writes = false) =>
+            ToolRegistry.Register(name, handler, writes);
+
+        R("Get-ChildItem", GetChildItem);
+        R("Get-Item", GetItem);
+        R("Get-Content", args => File.ReadAllText(RequiredPath(args)));
+        R("Set-Content", args => WriteFile(args, append: false), writes: true);
+        R("Add-Content", args => WriteFile(args, append: true), writes: true);
+        R("New-Item", NewItem, writes: true);
+        R("Copy-Item", CopyItem, writes: true);
+        R("Move-Item", MoveItem, writes: true);
+        R("Rename-Item", RenameItem, writes: true);
+        R("Remove-Item", RemoveItem, writes: true);
+        R("Test-Path", args => File.Exists(RequiredPath(args)) || Directory.Exists(RequiredPath(args)));
+        R("Join-Path", args => Path.Combine(Text(Arg(args, "Path")), Text(Arg(args, "ChildPath"))));
+        R("Split-Path", SplitPath);
+        R("Resolve-Path", args => Path.GetFullPath(RequiredPath(args)));
+        R("Get-FileHash", GetFileHash);
+        R("Select-String", SelectString);
+        R("Compress-Archive", CompressArchive, writes: true);
+        R("Expand-Archive", ExpandArchive, writes: true);
+        R("New-TemporaryFile", _ => NewTemporaryFile(), writes: true);
+        R("Set-Location", SetLocation, writes: true);
+        R("Get-Date", GetDate);
+        R("Get-Random", args => GetRandom(args));
+        R("New-Guid", _ => Guid.NewGuid().ToString());
+        R("ConvertTo-Json", args => JsonSerializer.Serialize(Arg(args, "InputObject"), new JsonSerializerOptions { WriteIndented = false }));
+        R("Measure-Object", MeasureObject);
+        R("Start-Sleep", Sleep, writes: true);
+        R("Clear-Host", _ => ClearHost(), writes: true);
+        R("Read-Host", args => Read(Text(Arg(args, "Prompt"))));
+        R("Import-Csv", args => ParseCsv(File.ReadAllText(RequiredPath(args))));
+        R("Export-Csv", ExportCsv, writes: true);
+        R("Import-Module", _ => null);
+        R("Remove-Module", _ => null);
+        R("throw", args => throw new MachineHaltException(Text(args.Values.FirstOrDefault())));
+        R("Write-Warning", args => WriteMessage("WARNING: " + Text(Arg(args, "Message"))));
+        R("Write-Verbose", args => WriteMessage("VERBOSE: " + Text(Arg(args, "Message"))));
+
+        RegisterOsTools();
+        RegisterNativeTools();
     }
 
     private static object? WriteMessage(string message)
@@ -392,7 +407,10 @@ public static partial class Machine
         ["DirectoryName"] = file.DirectoryName ?? "",
         ["Extension"] = file.Extension,
         ["BaseName"] = Path.GetFileNameWithoutExtension(file.Name),
-        ["Exists"] = file.Exists
+        ["Exists"] = file.Exists,
+        ["LastWriteTime"] = file.Exists ? file.LastWriteTime.ToString("o") : "",
+        ["CreationTime"] = file.Exists ? file.CreationTime.ToString("o") : "",
+        ["LastAccessTime"] = file.Exists ? file.LastAccessTime.ToString("o") : ""
     });
 
     private static WritData DirectoryData(DirectoryInfo directory) => new(new Dictionary<string, object?>
@@ -401,7 +419,10 @@ public static partial class Machine
         ["FullName"] = directory.FullName,
         ["Length"] = 0L,
         ["Parent"] = directory.Parent?.FullName ?? "",
-        ["Exists"] = directory.Exists
+        ["Exists"] = directory.Exists,
+        ["LastWriteTime"] = directory.Exists ? directory.LastWriteTime.ToString("o") : "",
+        ["CreationTime"] = directory.Exists ? directory.CreationTime.ToString("o") : "",
+        ["LastAccessTime"] = directory.Exists ? directory.LastAccessTime.ToString("o") : ""
     });
 
     private static IEnumerable AsEnumerable(object? value) =>
